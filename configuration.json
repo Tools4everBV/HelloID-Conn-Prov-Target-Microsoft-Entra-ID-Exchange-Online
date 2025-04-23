@@ -1,0 +1,97 @@
+[
+    {
+        "key": "Organization",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "Organization",
+            "placeholder": "enyoi.onmicrosoft.com",
+            "description": "You must use the primary .onmicrosoft.com domain of the organization. Using anything else may lead to inconsistent results.",
+            "required": true
+        }
+    },
+    {
+        "key": "TenantID",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "App Registration Directory (tenant) ID",
+            "placeholder": "615g75e2-0v74-4a3c-6gaf-241t1q4m7f54",
+            "description": "",
+            "required": true
+        }
+    },
+    {
+        "key": "AppId",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "App Registration Application (client) ID",
+            "placeholder": "9c12a9b1-34c5-678d-ac34-8a890100d46d",
+            "description": "",
+            "required": true
+        }
+    },
+    {
+        "key": "AppCertificateBase64String",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "App Registration Certificate Base 64 String",
+            "type": "password",
+            "placeholder": "MIIC2DCCAcCgAwIBAgIBATANBgkqhkiG9w0BAQUFADCBjDELMAkGA1UEBhMCVVMx",
+            "required": true
+        }
+    },
+    {
+        "key": "AppCertificatePassword",
+        "type": "input",
+        "defaultValue": "",
+        "templateOptions": {
+            "label": "App Registration Certificate Password",
+            "type": "password",
+            "placeholder": "P@ssw0rd!",
+            "required": true
+        }
+    },
+    {
+        "key": "exchangeOnlineIntegration",
+        "type": "checkbox",
+        "defaultValue": false,
+        "templateOptions": {
+            "label": "Exchange Online integration ",
+            "description": "Enable/disable Exchange Online integration. Note that licensing should be configured separately for example using group memberships.",
+            "required": false
+        }
+    },
+    {
+        "key": "deleteAccount",
+        "type": "checkbox",
+        "defaultValue": false,
+        "templateOptions": {
+            "label": "Delete the account when revoking the entitlement",
+            "description": "",
+            "required": false
+        }
+    },
+    {
+        "key": "setManagerOnCreate",
+        "type": "checkbox",
+        "defaultValue": false,
+        "templateOptions": {
+            "label": "Set manager when an account is created",
+            "description": "",
+            "required": false
+        }
+    },
+    {
+        "key": "updateManagerOnUpdate",
+        "type": "checkbox",
+        "defaultValue": false,
+        "templateOptions": {
+            "label": "Update manager when the account update operation is performed",
+            "description": "",
+            "required": false
+        }
+    }
+]
