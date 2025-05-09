@@ -70,14 +70,11 @@ The following features are available:
 | Feature                             | Supported | Actions                                 | Remarks |
 | ----------------------------------- | --------- | --------------------------------------- | ------- |
 | **Account Lifecycle**               | ✅         | Create, Update, Enable, Disable, Delete |         |
-| **Permissions**                     | ✅         | -                                       |         |
-| **Resources**                       | ❌         | -                                       |         |
-| **Uniqueness**                      | ❌         | -                                       |         |
-| **Entitlement Import: Accounts**    | ❌         | -                                       |         |
-| **Entitlement Import: Permissions** | ❌         | -                                       |         |
-
-> [!NOTE]
-In version _1.0.0_, only user-related actions -such as create, update, and delete— are supported. Permission management will be introduced in a future release.
+| **Permissions**                     | ✅         | Only groups (work in progress)          |         |
+| **Resources**                       | ✅         | Only groups                             |         |
+| **Uniqueness**                      | ✅         | -                                       |         |
+| **Entitlement Import: Accounts**    | ✅         | -                                       |         |
+| **Entitlement Import: Permissions** | ✅         | Only groups (work in progress)          |         |
 
 ## Getting started
 
