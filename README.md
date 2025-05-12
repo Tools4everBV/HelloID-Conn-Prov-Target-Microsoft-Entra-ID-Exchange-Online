@@ -67,14 +67,14 @@ If you’d like to use this connector, please contact your account manager.
 
 The following features are available:
 
-| Feature                             | Supported | Actions                                 | Remarks |
-| ----------------------------------- | --------- | --------------------------------------- | ------- |
-| **Account Lifecycle**               | ✅         | Create, Update, Enable, Disable, Delete |         |
-| **Permissions**                     | ✅         | Only groups (work in progress)          |         |
-| **Resources**                       | ✅         | Only groups                             |         |
-| **Uniqueness**                      | ✅         | -                                       |         |
-| **Entitlement Import: Accounts**    | ✅         | -                                       |         |
-| **Entitlement Import: Permissions** | ✅         | Only groups (work in progress)          |         |
+| Feature                             | Supported | Actions                                 | Remarks                      |
+| ----------------------------------- | --------- | --------------------------------------- | ---------------------------- |
+| **Account Lifecycle**               | ✅         | Create, Update, Enable, Disable, Delete | Only correlate also possible |
+| **Permissions**                     | ✅         | Only groups (work in progress)          |                              |
+| **Resources**                       | ✅         | Only groups                             |                              |
+| **Uniqueness**                      | ✅         | -                                       |                              |
+| **Entitlement Import: Accounts**    | ✅         | -                                       |                              |
+| **Entitlement Import: Permissions** | ✅         | Only groups (work in progress)          |                              |
 
 ## Getting started
 
