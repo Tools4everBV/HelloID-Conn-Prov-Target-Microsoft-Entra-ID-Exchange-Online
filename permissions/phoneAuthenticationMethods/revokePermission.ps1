@@ -1,7 +1,10 @@
-#############################################################
-# HelloID-Conn-Prov-Target-MS-Entra-Exo-GrantPermission-Group
+##################################################################################
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-GrantPermission-PhoneAuthenticationMethod
 # PowerShell V2
-#############################################################
+##################################################################################
+
+# Permission configuration
+$removeWhenRevokingEntitlement = $false
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -181,39 +184,78 @@ try {
         }
     }
 
+    $actionMessage = "querying phone authentication methods"
+    $getCurrentPhoneAuthenticationMethodsSplatParams = @{
+        Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods"
+        Headers     = $headers
+        Method      = "GET"
+        Verbose     = $false
+        ErrorAction = "Stop"
+    }
+
+    $currentPhoneAuthenticationMethods = (Invoke-RestMethod @getCurrentPhoneAuthenticationMethodsSplatParams).Value
+    $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Name)" }).phone
+
     if ($null -ne $correlatedAccountEntra) {
-        $action = 'GrantPermission'
+    if (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 1) {
+        if ($removeWhenRevokingEntitlement -eq $false) {
+            $actionPhoneAuthenticationMethod = "SkipDelete"
+        }
+        else {
+            $actionPhoneAuthenticationMethod = "RevokePermission"
+        }
+    }
+    elseif (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 0) {
+        $actionPhoneAuthenticationMethod = "NoExistingData-SkipDelete"
+    }
     } else {
         $action = 'NotFound'
     }
 
     # Process
     switch ($action) {
-        'GrantPermission' {
-            if (-not($actionContext.DryRun -eq $true)) {
-                $actionMessage = "Granting MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
-                Write-Information = $actionMessage
+        'RevokePermission' {
+            # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-delete?view=graph-rest-1.0&tabs=http
+            $actionMessage = "deleting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
+            Write-Information $actionMessage
+            $deletePhoneAuthenticationMethodSplatParams = @{
+                Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods/$($actionContext.References.Permission.Reference)"
+                Headers = $headers
+                Method  = 'DELETE'
+                Verbose = $false
+            }
 
-                # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
-                $splatGrantPermission = @{
-                    Uri     = "https://graph.microsoft.com/v1.0/groups/$($actionContext.References.Permission.Reference)/members/`$ref"
-                    Headers = $headers
-                    Method  = 'POST'
-                    Verbose = $false
-                    Body =  @{
-                        "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
-                    } | ConvertTo-Json -Depth 10
-                }
-                $null = Invoke-RestMethod @splatGrantPermission
-            } else {
-                Write-Information "[DryRun] Grant MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+            if (-not($actionContext.DryRun -eq $true)) {
+                $deletedPhoneAuthenticationMethod = Invoke-RestMethod @deletePhoneAuthenticationMethodSplatParams
             }
 
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Message = "Grant permission group [$($actionContext.PermissionDisplayName)] was successful"
-                IsError = $false
-            })
+                    Message = "Revoke permission [$($actionContext.PermissionDisplayName)] was successful"
+                    IsError = $false
+                })
+        }
+
+        'SkipDelete' {
+            $actionMessage = "skipping deleting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
+            Write-Information $actionMessage
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped deleting phone authentication method [$($actionContext.PermissionDisplayName)]. Reason: Configured to not delete on revoke of entitlement"
+                    IsError = $false
+                })
+            break
+        }
+
+        'NoExistingData-SkipDelete' {
+            $actionMessage = "skipping deleting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
+            Write-Information $actionMessage
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped deleting phone authentication method [$($actionContext.PermissionDisplayName)]. Reason: Nothing to delete"
+                    IsError = $false
+                })
+            break
         }
 
         'NotFound' {
@@ -221,7 +263,7 @@ try {
             $outputContext.Success  = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-                IsError = $true
+                IsError = $false
             })
             break
         }

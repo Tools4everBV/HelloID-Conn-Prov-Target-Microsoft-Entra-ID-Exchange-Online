@@ -1,7 +1,7 @@
-#############################################################
-# HelloID-Conn-Prov-Target-MS-Entra-Exo-GrantPermission-Group
+#######################################################################
+# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Permissions-Licenses-Import
 # PowerShell V2
-#############################################################
+#######################################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -145,13 +145,7 @@ function Get-MSEntraCertificate {
 }
 #endregion functions
 
-# Begin
 try {
-    $actionMessage = "verifying account reference"
-    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
-        throw "The account reference could not be found"
-    }
-
     # Setup Connection with Entra/Exo
     $actionMessage = 'connecting to MS-Entra'
     $certificate = Get-MSEntraCertificate
@@ -164,82 +158,78 @@ try {
     # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
     $headers.Add('ConsistencyLevel', 'eventual')
 
-    $actionMessage = 'verifying if a MS-Entra-Exo account exists'
-    Write-Information $actionMessage
-    try {
-        $splatGetEntraUser = @{
-            Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)?`$select=*"
-            Method  = 'GET'
-            Headers = @{'Authorization' = "Bearer $($entraToken)" }
+    $actionMessage = "querying Microsoft Entra ID Licenses"
+    $microsoftEntraIDLicenses = [System.Collections.ArrayList]@()
+    do {
+        $baseUri = "https://graph.microsoft.com/"
+        $getMicrosoftEntraIDLicensesSplatParams = @{
+            Uri         = "$($baseUri)/v1.0/subscribedSkus"
+            Headers     = $headers
+            Method      = 'GET'
+            Verbose     = $false
         }
-        $correlatedAccountEntra = Invoke-RestMethod @splatGetEntraUser -Verbose:$false
-    } catch {
-        if ($_.Exception.Response.StatusCode -eq 404) {
-            throw "Entra Account [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
-        } else {
-            throw $_
+        if (-not[string]::IsNullOrEmpty($getMicrosoftEntraIDLicensesResult.'@odata.nextLink')) {
+            $getMicrosoftEntraIDLicensesSplatParams["Uri"] = $getMicrosoftEntraIDLicensesResult.'@odata.nextLink'
         }
-    }
+        $getMicrosoftEntraIDLicensesResult = Invoke-RestMethod @getMicrosoftEntraIDLicensesSplatParams
 
-    if ($null -ne $correlatedAccountEntra) {
-        $action = 'GrantPermission'
-    } else {
-        $action = 'NotFound'
-    }
+        if ($getMicrosoftEntraIDLicensesResult.Value -is [array]) {
+            [void]$microsoftEntraIDLicenses.AddRange($getMicrosoftEntraIDLicensesResult.Value)
+        }
+        else {
+            [void]$microsoftEntraIDLicenses.Add($getMicrosoftEntraIDLicensesResult.Value)
+        }
+    } while (-not[string]::IsNullOrEmpty($getMicrosoftEntraIDLicensesResult.'@odata.nextLink'))
 
-    # Process
-    switch ($action) {
-        'GrantPermission' {
-            if (-not($actionContext.DryRun -eq $true)) {
-                $actionMessage = "Granting MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
-                Write-Information = $actionMessage
+    $actionMessage = "querying Entra ID license Members"
+    foreach ($entraLicense in $microsoftEntraIDLicenses) {
+        $skuId = $entraLicense.skuId
+        $skuName = $entraLicense.skuPartNumber
 
-                # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
-                $splatGrantPermission = @{
-                    Uri     = "https://graph.microsoft.com/v1.0/groups/$($actionContext.References.Permission.Reference)/members/`$ref"
-                    Headers = $headers
-                    Method  = 'POST'
-                    Verbose = $false
-                    Body =  @{
-                        "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
-                    } | ConvertTo-Json -Depth 10
-                }
-                $null = Invoke-RestMethod @splatGrantPermission
-            } else {
-                Write-Information "[DryRun] Grant MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+        $permission = @{
+            PermissionReference = @{
+                Id = $skuId
             }
-
-            $outputContext.Success = $true
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Message = "Grant permission group [$($actionContext.PermissionDisplayName)] was successful"
-                IsError = $false
-            })
+            Description         = $skuName
+            DisplayName         = $skuName
         }
 
-        'NotFound' {
-            Write-Information "MS-Entra account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-            $outputContext.Success  = $false
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-                IsError = $true
-            })
-            break
+        # Get users assigned this SKU
+        $users = @()
+        $url = "https://graph.microsoft.com/v1.0/users`?$filter=assignedLicenses/any(x:x/skuId eq $skuId)"
+
+        do {
+            $response = Invoke-RestMethod -Method Get -Uri $url -Headers $headers
+            $users += $response.value
+            $url = $response.'@odata.nextLink'
+        } while ($url)
+        $numberOfAccounts = $(($users | Measure-Object).Count)
+
+        # Batch permissions based on the amount of account references,
+        # to make sure the output objects are not above the limit
+        $accountsBatchSize = 500
+        if ($numberOfAccounts -gt 0) {
+            $accountsBatchSize = 500
+            $batches = 0..($numberOfAccounts - 1) | Group-Object { [math]::Floor($_ / $accountsBatchSize ) }
+            foreach ($batch in $batches) {
+                $permission.AccountReferences = [array]($batch.Group | ForEach-Object { @($users[$_].id) })
+                Write-Output $permission
+            }
         }
     }
-} catch {
-    $outputContext.success = $false
+}
+catch {
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-MS-Entra-ExoError -ErrorObject $ex
         $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
-        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
-        $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
-        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
-    $outputContext.AuditLogs.Add([PSCustomObject]@{
-        Message = $auditMessage
-        IsError = $true
-    })
+    else {
+        $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+    }
+    Write-Warning $warningMessage
+    Write-Error $auditMessage
 }

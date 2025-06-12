@@ -1,8 +1,7 @@
-#################################################
-# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Permissions-Groups-Revoke
-# Revoke groupmembership from account
+#################################################################
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-RevokePermission-Group
 # PowerShell V2
-#################################################
+#################################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -146,6 +145,7 @@ function Get-MSEntraCertificate {
 }
 #endregion functions
 
+# Begin
 try {
     $actionMessage = "verifying account reference"
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
@@ -156,7 +156,7 @@ try {
     $actionMessage = 'connecting to MS-Entra'
     $certificate = Get-MSEntraCertificate
     $entraToken = Get-MSEntraAccessToken -Certificate $certificate
- 
+
     $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
     $headers.Add('Authorization', "Bearer $entraToken")
     $headers.Add('Accept', 'application/json')
@@ -164,67 +164,88 @@ try {
     # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
     $headers.Add('ConsistencyLevel', 'eventual')
 
-    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http
-    $actionMessage = "revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] from account"
-
-    $baseUri = "https://graph.microsoft.com/"
-    $revokePermissionSplatParams = @{
-        Uri         = "$($baseUri)/v1.0/groups/$($actionContext.References.Permission.id)/members/$($actionContext.References.Account)/`$ref"
-        Headers     = $headers
-        Method      = "DELETE"
-        Verbose     = $false
-        ErrorAction = "Stop"
+    $actionMessage = 'verifying if a MS-Entra-Exo account exists'
+    Write-Information $actionMessage
+    try {
+        $splatGetEntraUser = @{
+            Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)?`$select=*"
+            Method  = 'GET'
+            Headers = @{'Authorization' = "Bearer $($entraToken)" }
+        }
+        $correlatedAccountEntra = Invoke-RestMethod @splatGetEntraUser -Verbose:$false
+    } catch {
+        if ($_.Exception.Response.StatusCode -eq 404) {
+            throw "Entra Account [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
+        } else {
+            throw $_
+        }
     }
 
-    if (-Not($actionContext.DryRun -eq $true)) {
-        $null = Invoke-RestMethod @revokePermissionSplatParams
+    if ($null -ne $correlatedAccountEntra) {
+        $action = 'RevokePermission'
+    } else {
+        $action = 'NotFound'
+    }
 
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Revoked group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
+    # Process
+    switch ($action) {
+        'RevokePermission' {
+            # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http
+            $actionMessage = "revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.Reference)] from account"
+
+            $baseUri = "https://graph.microsoft.com/"
+            $revokePermissionSplatParams = @{
+                Uri         = "$($baseUri)/v1.0/groups/$($actionContext.References.Permission.Reference)/members/$($actionContext.References.Account)/`$ref"
+                Headers     = $headers
+                Method      = "DELETE"
+                Verbose     = $false
+            }
+            if (-not($actionContext.DryRun -eq $true)) {
+                Write-Information "Revoking MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
+                $null = Invoke-RestMethod @revokePermissionSplatParams
+            } else {
+                Write-Information "[DryRun] Revoke MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+            }
+
+            $outputContext.Success = $true
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "Revoked group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.Reference)] from account with AccountReference: $($actionContext.References.Account)"
+                    IsError = $false
+                })
+        }
+
+        'NotFound' {
+            Write-Information "MS-Entra account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
+            $outputContext.Success  = $false
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
                 IsError = $false
             })
+            break
+        }
     }
-    else {
-        Write-Information "[DryRun] Would revoke group [$($actionContext.References.Permission.id)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
-    }
-}
-catch {
+} catch {
+    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-MS-Entra-ExoError -ErrorObject $ex
         $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
-        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    }
-    else {
-        $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
-        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
-    }
-    
-    if ($errorObj.ErrorDetails.error.code -eq "Request_ResourceNotFound" -and $errorObj.ErrorDetails.error.message -like "*$($actionContext.References.Permission.id)*") {
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = "Skipped revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already no longer a member or the group no longer exists."
-                IsError = $false
-            })
-    }
-    else {
-        Write-Warning $warningMessage
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
 
-        $outputContext.AuditLogs.Add([PSCustomObject]@{
-                # Action  = "" # Optional
-                Message = $auditMessage
-                IsError = $true
-            })
+        if ($errorObj.ErrorDetails.error.code -eq "Request_ResourceNotFound" -and $errorObj.ErrorDetails.error.message -like "*$($actionContext.References.Permission.id)*") {
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already no longer a member or the group no longer exists."
+                    IsError = $false
+                })
+        }
+    } else {
+        $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-}
-finally {
-    # Check if auditLogs contains errors, if no errors are found, set success to true
-    if ($outputContext.AuditLogs.IsError -contains $true) {
-        $outputContext.Success = $false
-    }
-    else {
-        $outputContext.Success = $true
-    }
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+        Message = $auditMessage
+        IsError = $true
+    })
 }

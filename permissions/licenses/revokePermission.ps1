@@ -1,7 +1,7 @@
-#############################################################
-# HelloID-Conn-Prov-Target-MS-Entra-Exo-GrantPermission-Group
+#################################################################
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-RevokePermission-License
 # PowerShell V2
-#############################################################
+#################################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -147,6 +147,7 @@ function Get-MSEntraCertificate {
 
 # Begin
 try {
+    # Verify if [aRef] has a value
     $actionMessage = "verifying account reference"
     if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
         throw "The account reference could not be found"
@@ -173,60 +174,65 @@ try {
             Headers = @{'Authorization' = "Bearer $($entraToken)" }
         }
         $correlatedAccountEntra = Invoke-RestMethod @splatGetEntraUser -Verbose:$false
-    } catch {
+    }
+    catch {
         if ($_.Exception.Response.StatusCode -eq 404) {
             throw "Entra Account [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
-        } else {
+        }
+        else {
             throw $_
         }
     }
 
     if ($null -ne $correlatedAccountEntra) {
-        $action = 'GrantPermission'
-    } else {
+        $action = 'RevokePermission'
+    }
+    else {
         $action = 'NotFound'
     }
 
     # Process
     switch ($action) {
-        'GrantPermission' {
+        'RevokePermission' {
+            # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
+            $actionMessage = "revoking license [$($actionContext.References.Permission.Reference)] with skuid [$($actionContext.References.Permission.Reference)] from account"
+            $revokePermissionSplatParams = @{
+                Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/assignLicense"
+                Headers = $headers
+                Method  = "POST"
+                Body    = [ordered]@{
+                    addLicenses    = @()
+                    removeLicenses = @($($actionContext.References.Permission.Reference))
+                } | ConvertTo-Json
+                Verbose = $false
+            }
             if (-not($actionContext.DryRun -eq $true)) {
-                $actionMessage = "Granting MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
-                Write-Information = $actionMessage
-
-                # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
-                $splatGrantPermission = @{
-                    Uri     = "https://graph.microsoft.com/v1.0/groups/$($actionContext.References.Permission.Reference)/members/`$ref"
-                    Headers = $headers
-                    Method  = 'POST'
-                    Verbose = $false
-                    Body =  @{
-                        "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
-                    } | ConvertTo-Json -Depth 10
-                }
-                $null = Invoke-RestMethod @splatGrantPermission
-            } else {
-                Write-Information "[DryRun] Grant MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "Revoking MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
+                $revokedPermission = Invoke-RestMethod @revokePermissionSplatParams
+            }
+            else {
+                Write-Information "[DryRun] Revoke MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Message = "Grant permission group [$($actionContext.PermissionDisplayName)] was successful"
-                IsError = $false
-            })
+                    Message = "Revoke permission [$($actionContext.PermissionDisplayName)] was successful"
+                    IsError = $false
+                })
         }
 
         'NotFound' {
             Write-Information "MS-Entra account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-            $outputContext.Success  = $false
+            $outputContext.Success = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-                IsError = $true
-            })
+                    Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
+                    IsError = $true
+                })
             break
         }
     }
-} catch {
+}
+catch {
     $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -234,12 +240,32 @@ try {
         $errorObj = Resolve-MS-Entra-ExoError -ErrorObject $ex
         $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
+
+    # Since the error message for removing a license when the user does not have that license is a 400 (bad request), we cannot check on a code or type
+    # this may result in an incorrect check when the error messages are in any other language than english, please change this accordingly
+    if ($auditMessage -like "*User does not have a corresponding license*") {
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                # Action  = "" # Optional
+                Message = "Skipped revoking license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User does not have the corresponding license."
+                IsError = $false
+            })
+    }
+    # Since the error message for removing a license that does not exist for the company is a 400 (bad request), we cannot check on a code or type
+    # this may result in an incorrect check when the error messages are in any other language than english, please change this accordingly
+    elseif ($auditMessage -like "*License $($pRef.skuId) does not correspond to a valid company License*") {
+        $auditLogs.Add([PSCustomObject]@{
+                # Action  = "" # Optional
+                Message = "Skipped revoking license [$($actionContext.References.Permission.SkuPartNumber)] with skuid [$($actionContext.References.Permission.SkuId)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: License does not correspond to a valid company license."
+                IsError = $false
+            })
+    }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
-        Message = $auditMessage
-        IsError = $true
-    })
+            Message = $auditMessage
+            IsError = $true
+        })
 }

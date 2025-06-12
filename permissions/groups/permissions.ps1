@@ -1,9 +1,7 @@
-#################################################
-# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Permissions-Groups-List
-# List groups as permissions
-# Currently only Microsoft 365 and Security groups are supported by the Microsoft Graph API: https://docs.microsoft.com/en-us/graph/api/resources/groups-overview?view=graph-rest-1.0
+############################################################
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-Permissions-Group
 # PowerShell V2
-#################################################
+############################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -148,7 +146,6 @@ function Get-MSEntraCertificate {
 #endregion functions
 
 try {
-    # Setup Connection with Entra/Exo
     $actionMessage = 'connecting to MS-Entra'
     $certificate = Get-MSEntraCertificate
     $entraToken = Get-MSEntraAccessToken -Certificate $certificate
@@ -160,108 +157,49 @@ try {
     # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
     $headers.Add('ConsistencyLevel', 'eventual')
 
-    $actionMessage = "querying Microsoft Entra ID Microsoft 365 Groups"
-    $microsoftEntraIDM365Groups = [System.Collections.ArrayList]@()
+    $actionMessage = 'Retrieving permissions'
+    Write-Information $actionMessage
+    $baseUri = "https://graph.microsoft.com/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,onPremisesSyncEnabled,groupTypes&`$top=999&`$count=true"
+    $microsoftEntraIDM365Groups = [System.Collections.Generic.List[object]]::new()
+
+    $nextLink = $baseUri
     do {
-        $baseUri = "https://graph.microsoft.com/"
-        $getMicrosoftEntraIDM365GroupsSplatParams = @{
-            Uri         = "$($baseUri)/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,onPremisesSyncEnabled,groupTypes&`$top=999&`$count=true"
+        $splatParams = @{
+            Uri         = $nextLink
             Headers     = $headers
-            Method      = "GET"
+            Method      = 'GET'
             Verbose     = $false
-            ErrorAction = "Stop"
         }
-        if (-not[string]::IsNullOrEmpty($getMicrosoftEntraIDM365GroupsResult.'@odata.nextLink')) {
-            $getMicrosoftEntraIDM365GroupsSplatParams["Uri"] = $getMicrosoftEntraIDM365GroupsResult.'@odata.nextLink'
+        $response = Invoke-RestMethod @splatParams
+        if ($response.Value -is [array]) {
+            $microsoftEntraIDM365Groups.AddRange($response.Value)
+        } elseif ($response.Value) {
+            $microsoftEntraIDM365Groups.Add($response.Value)
         }
+        $nextLink = $response.'@odata.nextLink'
+    } while (-not [string]::IsNullOrEmpty($nextLink))
 
-        $getMicrosoftEntraIDM365GroupsResult = $null
-        $getMicrosoftEntraIDM365GroupsResult = Invoke-RestMethod @getMicrosoftEntraIDM365GroupsSplatParams
-    
-        if ($getMicrosoftEntraIDM365GroupsResult.Value -is [array]) {
-            [void]$microsoftEntraIDM365Groups.AddRange($getMicrosoftEntraIDM365GroupsResult.Value)
-        }
-        else {
-            [void]$microsoftEntraIDM365Groups.Add($getMicrosoftEntraIDM365GroupsResult.Value)
-        }
-    } while (-not[string]::IsNullOrEmpty($getMicrosoftEntraIDM365GroupsResult.'@odata.nextLink'))
-
-    Write-Information "Queried Microsoft Entra ID Microsoft 365 Groups. Result count: $(($microsoftEntraIDM365Groups | Measure-Object).Count)"
-
-    $microsoftEntraIDM365Groups | ForEach-Object {
-        # Shorten DisplayName to max. 100 chars
-        $displayName = "M365 Group - $($_.displayName)"
-        $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length)) 
-        
+    foreach ($permission in $microsoftEntraIDM365Groups) {
+        $displayName = "Security Group - $($permission.displayName)"
+        $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length))
         $outputContext.Permissions.Add(
             @{
-                displayName    = $displayName
-                identification = @{
-                    Id = $_.id
+                DisplayName    = $displayName
+                Identification = @{
+                    Reference = $permission.id
                 }
             }
         )
     }
-
-    $actionMessage = "querying Microsoft Entra ID Security Groups"
-    $microsoftEntraIDSecurityGroups = [System.Collections.ArrayList]@()
-    do {
-        $baseUri = "https://graph.microsoft.com/"
-        $getMicrosoftEntraIDSecurityGroupsSplatParams = @{
-            Uri         = "$($baseUri)/v1.0/groups?`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true&`$select=id,displayName,onPremisesSyncEnabled,groupTypes&`$top=999&`$count=true"
-            Headers     = $headers
-            Method      = "GET"
-            Verbose     = $false
-            ErrorAction = "Stop"
-        }
-        if (-not[string]::IsNullOrEmpty($getMicrosoftEntraIDSecurityGroupsResult.'@odata.nextLink')) {
-            $getMicrosoftEntraIDSecurityGroupsSplatParams["Uri"] = $getMicrosoftEntraIDSecurityGroupsResult.'@odata.nextLink'
-        }
-
-        $getMicrosoftEntraIDSecurityGroupsResult = $null
-        $getMicrosoftEntraIDSecurityGroupsResult = Invoke-RestMethod @getMicrosoftEntraIDSecurityGroupsSplatParams
-    
-        if ($getMicrosoftEntraIDSecurityGroupsResult.Value -is [array]) {
-            [void]$microsoftEntraIDSecurityGroups.AddRange($getMicrosoftEntraIDSecurityGroupsResult.Value)
-        }
-        else {
-            [void]$microsoftEntraIDSecurityGroups.Add($getMicrosoftEntraIDSecurityGroupsResult.Value)
-        }
-    } while (-not[string]::IsNullOrEmpty($getMicrosoftEntraIDSecurityGroupsResult.'@odata.nextLink'))
-
-    Write-Information "Queried Microsoft Entra ID Security Groups. Result count: $(($microsoftEntraIDSecurityGroups | Measure-Object).Count)"
-
-    $microsoftEntraIDSecurityGroups | ForEach-Object {
-        # Shorten DisplayName to max. 100 chars
-        $displayName = "Security Group - $($_.displayName)"
-        $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length)) 
-        
-        $outputContext.Permissions.Add(
-            @{
-                displayName    = $displayName
-                identification = @{
-                    Id = $_.id
-                }
-            }
-        )
-    }
-}
-catch {
+} catch {
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-MS-Entra-ExoError -ErrorObject $ex
         $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    }
-    else {
+    } else {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-
-    # Set Success to false
-    $outputContext.Success = $false
-
-    # Required to write an error as the listing of permissions doesn't show auditlog
-    Write-Error $auditMessage
 }

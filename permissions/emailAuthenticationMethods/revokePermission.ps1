@@ -1,7 +1,10 @@
-#############################################################
-# HelloID-Conn-Prov-Target-MS-Entra-Exo-GrantPermission-Group
+##################################################################################
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-GrantPermission-PhoneAuthenticationMethod
 # PowerShell V2
-#############################################################
+##################################################################################
+
+# Permission configuration
+$removeWhenRevokingEntitlement = $false
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -181,39 +184,80 @@ try {
         }
     }
 
+    # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-get?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying email authentication methods for account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)"
+    $splatGetCurrentEmailAuthenticationMethods = @{
+        Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods"
+        Headers     = $headers
+        Method      = 'GET'
+        Verbose     = $false
+    }
+    $currentEmailAuthenticationMethods = (Invoke-RestMethod @splatGetCurrentEmailAuthenticationMethods).Value
+    $currentEmailAuthenticationMethod = ($currentEmailAuthenticationMethods | Where-Object { $_.id -eq "$($actionContext.References.Permission.Reference)" }).emailAddress
+
     if ($null -ne $correlatedAccountEntra) {
-        $action = 'GrantPermission'
+        if (($currentEmailAuthenticationMethod | Measure-Object).count -eq 1) {
+            if ($removeWhenRevokingEntitlement){
+                $action = 'SkipDelete'
+            } else {
+                $action = 'RevokePermission'
+            }
+        }
+        elseif (($currentEmailAuthenticationMethod | Measure-Object).count -eq 0) {
+            $action = 'NoExistingData-SkipDelete'
+        }
     } else {
         $action = 'NotFound'
     }
 
     # Process
     switch ($action) {
-        'GrantPermission' {
+        'RevokePermission' {
+            # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-delete?view=graph-rest-1.0&tabs=http
+            $actionMessage = "deleting email authentication method [$($actionContext.PermissionDisplayName)] for account"
+            Write-Information $actionMessage
+            $deleteEmailAuthenticationMethodSplatParams = @{
+                Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods/$($actionContext.References.Permission.Reference)"
+                Method  = 'DELETE'
+                Verbose = $false
+                Headers = $Headers
+            }
             if (-not($actionContext.DryRun -eq $true)) {
-                $actionMessage = "Granting MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
-                Write-Information = $actionMessage
-
-                # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
-                $splatGrantPermission = @{
-                    Uri     = "https://graph.microsoft.com/v1.0/groups/$($actionContext.References.Permission.Reference)/members/`$ref"
-                    Headers = $headers
-                    Method  = 'POST'
-                    Verbose = $false
-                    Body =  @{
-                        "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
-                    } | ConvertTo-Json -Depth 10
-                }
-                $null = Invoke-RestMethod @splatGrantPermission
+                Write-Information "Revoking MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
+                $null = Invoke-RestMethod @deleteEmailAuthenticationMethodSplatParams
             } else {
-                Write-Information "[DryRun] Grant MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "[DryRun] Revoke MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Message = "Grant permission group [$($actionContext.PermissionDisplayName)] was successful"
-                IsError = $false
-            })
+                    Message = "Revoke permission [$($actionContext.PermissionDisplayName)] was successful"
+                    IsError = $false
+                })
+        }
+
+        'SkipDelete' {
+            $actionMessage = "skipping deleting email authentication method [$($actionContext.PermissionDisplayName)] for account"
+            Write-Information $actionMessage
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped deleting email authentication method [$($actionContext.PermissionDisplayName)] for account with AccountReference. Reason: Configured to not delete on revoke of entitlement."
+                    IsError = $false
+                })
+            break
+        }
+
+        'NoExistingData-SkipDelete' {
+            $actionMessage = "skipping deleting email authentication method [$($actionContext.PermissionDisplayName)] for account"
+            Write-Information $actionMessage
+            $outputContext.Success  = $true
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped deleting email authentication method [$($actionContext.PermissionDisplayName)]. Reason: Nothing to delete"
+                    IsError = $false
+                })
+
+            break
         }
 
         'NotFound' {
@@ -221,7 +265,7 @@ try {
             $outputContext.Success  = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-                IsError = $true
+                IsError = $false
             })
             break
         }

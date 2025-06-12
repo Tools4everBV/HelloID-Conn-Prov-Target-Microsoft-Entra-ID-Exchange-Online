@@ -1,7 +1,10 @@
-#############################################################
-# HelloID-Conn-Prov-Target-MS-Entra-Exo-GrantPermission-Group
+##################################################################################
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-GrantPermission-PhoneAuthenticationMethod
 # PowerShell V2
-#############################################################
+##################################################################################
+
+# Permission configuration
+$updatePermissionWhenEmpty = $false
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -181,8 +184,68 @@ try {
         }
     }
 
+    $actionMessage = "querying phone authentication methods"
+    $getCurrentPhoneAuthenticationMethodsSplatParams = @{
+        Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods"
+        Headers     = $headers
+        Method      = "GET"
+        Verbose     = $false
+        ErrorAction = "Stop"
+    }
+    $currentPhoneAuthenticationMethods = (Invoke-RestMethod @getCurrentPhoneAuthenticationMethodsSplatParams).Value
+    $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Name)" }).phone
+    switch ($actionContext.References.Permission.Name) {
+        "mobile" {
+            $phoneNumber = $personContext.Person.Contact.Business.Phone.Mobile
+            break
+        }
+
+        "alternateMobile" {
+            $phoneNumber = $personContext.Person.Contact.Business.Phone.Fixed
+            break
+        }
+
+        "office" {
+            $phoneNumber = $personContext.Person.Contact.Personal.Phone.Mobile
+            break
+        }
+    }
+
+    $actionMessage = 'Determine phonenumber'
+    if ($null -ne $phoneNumber -and $phoneNumber) {
+        $phoneNumber = $phoneNumber -replace "-", "" -replace "\s", ""
+        if ($phoneNumber.StartsWith("06")) {
+            $phoneNumber = "+316" + $phoneNumber.Substring(2)
+        }
+        elseif ($phoneNumber.StartsWith("0031")) {
+            $phoneNumber = "+31" + $phoneNumber.Substring(4)
+        }
+        elseif ($phoneNumber.StartsWith("00")) {
+            $phoneNumber = "+" + $phoneNumber.Substring(2)
+        }
+        if (-not $phoneNumber.StartsWith("+")) {
+            $phoneNumber = "+" + $phoneNumber
+        }
+    }
+
     if ($null -ne $correlatedAccountEntra) {
-        $action = 'GrantPermission'
+        if (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 0) {
+            $action = "GrantPermission"
+        }
+        elseif (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 1) {
+            $currentPhoneAuthenticationMethod = $currentPhoneAuthenticationMethod.replace(" ", "")
+            if ($currentPhoneAuthenticationMethod -ne $($phoneNumber)) {
+                if ($updatePermissionWhenEmpty -eq $true) {
+                    $actionPhoneAuthenticationMethod = "ExistingData-SkipUpdate"
+                }
+                else {
+                    $actionPhoneAuthenticationMethod = "UpdatePermission"
+                }
+            }
+            else {
+                $action = "NoChanges"
+            }
+        }
     } else {
         $action = 'NotFound'
     }
@@ -190,30 +253,84 @@ try {
     # Process
     switch ($action) {
         'GrantPermission' {
-            if (-not($actionContext.DryRun -eq $true)) {
-                $actionMessage = "Granting MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
-                Write-Information = $actionMessage
-
-                # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
-                $splatGrantPermission = @{
-                    Uri     = "https://graph.microsoft.com/v1.0/groups/$($actionContext.References.Permission.Reference)/members/`$ref"
+                #region Create phoneAuthenticationMethod
+                # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/authentication-post-phonemethods?view=graph-rest-1.0&tabs=http
+                $actionMessage = "creating phone authentication method [$($actionContext.References.Permission.Name)] for account"
+                Write-Information $actionMessage
+                $createPhoneAuthenticationMethodSplatParams = @{
+                    Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods"
                     Headers = $headers
-                    Method  = 'POST'
-                    Verbose = $false
-                    Body =  @{
-                        "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
+                    Method  = "POST"
+                    Body        = @{
+                        "phoneNumber" = $($phoneNumber)
+                        "phoneType"   = $($actionContext.References.Permission.Type)
                     } | ConvertTo-Json -Depth 10
+                    Verbose = $false
                 }
-                $null = Invoke-RestMethod @splatGrantPermission
-            } else {
-                Write-Information "[DryRun] Grant MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+
+                if (-not($actionContext.DryRun -eq $true)) {
+                    $null = Invoke-RestMethod @createPhoneAuthenticationMethodSplatParams
+                }
+                else {
+                Write-Information "[DryRun] Grant MS-Entra-Exo PhoneAuthenticationMethod: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                Message = "Grant permission group [$($actionContext.PermissionDisplayName)] was successful"
+                Message = "Grant permission PhoneAuthenticationMethod [$($actionContext.PermissionDisplayName)] was successful"
                 IsError = $false
             })
+        }
+
+        'UpdatePermission' {
+            # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-update?view=graph-rest-1.0&tabs=http
+            $actionMessage = "updating phone authentication method [$($actionContext.PermissionDisplayName)] for account"
+            Write-Information $actionMessage
+            $updatePhoneAuthenticationMethodSplatParams = @{
+                Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods/$($actionContext.References.Permission.Reference)"
+                Headers     = $headers
+                Method      = "PATCH"
+                Body        =  @{
+                    "phoneNumber" = $($phoneNumber)
+                    "phoneType"   = $($actionContext.References.Permission.Type)
+                } | ConvertTo-Json -Depth 10
+                Verbose     = $false
+            }
+
+            if (-Not($actionContext.DryRun -eq $true)) {
+                $null = Invoke-RestMethod @updatePhoneAuthenticationMethodSplatParams
+            }
+            else {
+                Write-Information "[DryRun] Update MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+            }
+
+            $outputContext.Success = $true
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = "Update PhoneAuthenticationMethod permission [$($actionContext.PermissionDisplayName)] was successful"
+                IsError = $false
+            })
+            break
+        }
+
+        "NoChanges" {
+            $actionMessage = "skipping setting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
+            Write-Information $actionMessage
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped setting phone authentication method [$($actionContext.PermissionDisplayName)]. Reason: No changes"
+                    IsError = $false
+                })
+            break
+        }
+
+        "ExistingData-SkipUpdate" {
+            $actionMessage = "skipping setting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    # Action  = "" # Optional
+                    Message = "Skipped setting phone authentication method [$($actionContext.PermissionDisplayName)]. Reason: Configured to only update when empty but already contains data"
+                    IsError = $false
+                })
+            break
         }
 
         'NotFound' {

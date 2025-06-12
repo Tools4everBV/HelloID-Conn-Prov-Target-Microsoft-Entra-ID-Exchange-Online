@@ -21,10 +21,10 @@ function Remove-StringLatinCharacters {
 
 function Get-SanitizedGroupName {
     # The names of security principal objects can contain all Unicode characters except the special LDAP characters defined in RFC 2253.
-    # This list of special characters includes: a leading space a trailing space and any of the following characters: # , + " \ < > 
+    # This list of special characters includes: a leading space a trailing space and any of the following characters: # , + " \ < >
     # A group account cannot consist solely of numbers, periods (.), or spaces. Any leading periods or spaces are cropped.
     # https://docs.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc776019(v=ws.10)?redirectedfrom=MSDN
-    # https://www.ietf.org/rfc/rfc2253.txt    
+    # https://www.ietf.org/rfc/rfc2253.txt
     param(
         [parameter(Mandatory = $true)][String]$Name
     )
@@ -41,7 +41,7 @@ function Get-SanitizedGroupName {
 
     # Remove diacritics
     $newName = Remove-StringLatinCharacters $newName
-    
+
     return $newName
 }
 
@@ -193,7 +193,7 @@ try {
     $actionMessage = 'connecting to MS-Entra'
     $certificate = Get-MSEntraCertificate
     $entraToken = Get-MSEntraAccessToken -Certificate $certificate
- 
+
     $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
     $headers.Add('Authorization', "Bearer $entraToken")
     $headers.Add('Accept', 'application/json')
@@ -218,8 +218,8 @@ try {
 
                 # Example: title_<titlename>
                 # $correlationValue = "title_" + $contract.Title.Name
-                
-                # Sanitize group name, e.g. replace " - " with "_" or other sanitization actions 
+
+                # Sanitize group name, e.g. replace " - " with "_" or other sanitization actions
                 $correlationValue = Get-SanitizedGroupName -Name $correlationValue
 
                 $baseUri = "https://graph.microsoft.com/"
@@ -231,9 +231,9 @@ try {
                     ErrorAction = "Stop"
                 }
                 $group = $null
-                
+
                 $group = (Invoke-RestMethod @getMicrosoftEntraIDGroupSplatParams).Value
-    
+
                 if ($group.Id.count -eq 0) {
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
                             Action  = "GrantPermission"
@@ -254,12 +254,12 @@ try {
                 }
             }
         }
-    }    
+    }
     Write-Information ("Desired Permissions: {0}" -f ($desiredPermissions.Values | ConvertTo-Json))
     Write-Information ("Existing Permissions: {0}" -f ($actionContext.CurrentPermissions.DisplayName | ConvertTo-Json))
 
     $newCurrentPermissions = @{}
-    foreach ($permission in $currentPermissions.GetEnumerator()) {    
+    foreach ($permission in $currentPermissions.GetEnumerator()) {
         if (-Not $desiredPermissions.ContainsKey($permission.Name) -AND $permission.Name -ne "No permissions defined") {
             # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http
             $actionMessage = "revoking group [$($permission.Value)] with id [$($permission.Name)] from account"
@@ -300,7 +300,7 @@ try {
                     }
                     else {
                         throw $ex
-                    }     
+                    }
                 }
             }
             else {
@@ -317,7 +317,7 @@ try {
                 DisplayName = $permission.Value
                 Reference   = [PSCustomObject]@{ Id = $permission.Name }
             })
-    
+
         if (-Not $currentPermissions.ContainsKey($permission.Name)) {
             # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
             $actionMessage = "granting group [$($permission.Value)] with id [$($permission.Name)] to account"
@@ -360,13 +360,13 @@ try {
                     }
                     else {
                         throw $ex
-                    }     
+                    }
                 }
             }
             else {
                 Write-Information "[DryRun] Would grant group [$($permission.Value)] with id [$($permission.Name)] to account with AccountReference: $($actionContext.References.Account | ConvertTo-Json)."
             }
-        }    
+        }
     }
 }
 catch {
@@ -381,16 +381,16 @@ catch {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
         $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-    
+
     Write-Warning $warningMessage
-    
+
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             # Action  = "" # Optional
             Message = $auditMessage
             IsError = $true
         })
 }
-finally { 
+finally {
     # Handle case of empty defined dynamic permissions.  Without this the entitlement will error.
     if ($actionContext.Operation -match "update|grant" -AND $outputContext.SubPermissions.count -eq 0) {
         $outputContext.SubPermissions.Add([PSCustomObject]@{
