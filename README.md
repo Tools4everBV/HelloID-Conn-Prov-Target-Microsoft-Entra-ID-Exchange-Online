@@ -17,6 +17,7 @@
   - [Introduction](#introduction)
   - [Private repository](#private-repository)
   - [Supported  features](#supported--features)
+    - [Permissions](#permissions)
   - [Getting started](#getting-started)
     - [Prerequisites](#prerequisites)
       - [App Registration](#app-registration)
@@ -67,14 +68,25 @@ If you’d like to use this connector, please contact your account manager.
 
 The following features are available:
 
-| Feature                             | Supported | Actions                                 | Remarks                      |
-| ----------------------------------- | --------- | --------------------------------------- | ---------------------------- |
-| **Account Lifecycle**               | ✅         | Create, Update, Enable, Disable, Delete | Only correlate also possible |
-| **Permissions**                     | ✅         | Only groups (work in progress)          |                              |
-| **Resources**                       | ✅         | Only groups                             |                              |
-| **Uniqueness**                      | ✅         | -                                       |                              |
-| **Entitlement Import: Accounts**    | ✅         | -                                       |                              |
-| **Entitlement Import: Permissions** | ✅         | Only groups (work in progress)          |                              |
+| Feature                             | Supported | Actions / Type                                           | Remarks |
+| ----------------------------------- | --------- | -------------------------------------------------------- | ------- |
+| **Account Lifecycle**               | ✅         | Create, Update, Enable, Disable, Delete                  |         |
+| **Permissions**                     | ✅         | Groups, Licenses, Phone and Email authentication methods |         |
+| **Resources**                       | ❌         | -                                                        |         |
+| **Uniqueness**                      | ✅         | -                                                        |         |
+| **Entitlement Import: Accounts**    | ❌         | -                                                        |         |
+| **Entitlement Import: Permissions** | ✅         | -                                                        |         |
+
+### Permissions
+
+The following permissions are available:
+
+- Groups
+- Licences
+- Phone authentication methods
+- Email authentication methods
+
+Note that for both groups and licenses, the _import_ feature is also supported.
 
 ## Getting started
 
