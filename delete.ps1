@@ -173,7 +173,7 @@ try {
     }
     try {
         $correlatedAccountEntra = Invoke-RestMethod @splatGetEntraUser -Verbose:$false
-
+        $outputContext.PreviousData = $correlatedAccountEntra | Select-Object -Property *
     } catch {
         if ($_.Exception.Response.StatusCode -eq 404) {
             $correlatedAccountEntra = $null;
@@ -187,7 +187,7 @@ try {
             $actionList += 'DeleteAccountEntra'
         } else {
             $actionList += 'UpdateAccountEntra'
-            if ($actionContext.Configuration.ExchangeOnlineIntegration -and ($null -ne $actionContext.Data.exchangeOnline)) {
+            if ($actionContext.Configuration.ExchangeOnlineIntegration -and ($null -ne $actionContext.Data.exchangeOnline -or $actionContext.Origin -eq 'reconciliation')) {
                 $actionList += 'UpdateAccountExo'
             }
         }
@@ -227,8 +227,24 @@ try {
 
                 $actionMessage = "updating  MS-Entra account in delete action with AccountReference [$($actionContext.References.Account)]"
                 $bodyUpdateAccountEntra = @{}
-                foreach ($entraAccountProperty in ($actionContext.Data | Select-Object * -ExcludeProperty ExchangeOnline, passwordProfile, managerId).PsObject.Properties ) {
-                    $bodyUpdateAccountEntra["$($entraAccountProperty.Name)"] = $entraAccountProperty.Value
+                switch ($actionContext.Origin) {
+                    'enforcement' {
+                        $auditMessage = 'Update MS-Entra account in delete action was successful'
+                        foreach ($entraAccountProperty in ($actionContext.Data | Select-Object * -ExcludeProperty ExchangeOnline, passwordProfile, managerId).PsObject.Properties ) {
+                            $bodyUpdateAccountEntra["$($entraAccountProperty.Name)"] = $entraAccountProperty.Value
+                        }
+                        break
+                    }
+                    'reconciliation' {
+                        $auditMessage = "Disable MS-Entra account [$($actionContext.References.Account)] in delete action was successful (reconciliation)"
+                        $bodyUpdateAccountEntra = @{
+                            accountEnabled = $false
+                        }
+                        break
+                    }
+                    default {
+                        throw "Unknown action origin: [$($actionContext.Origin)] Valid values are 'reconciliation' or 'enforcement'."
+                    }
                 }
 
                 $splatUpdateEntraAccount = @{
@@ -243,7 +259,7 @@ try {
                 }
                 $outputContext.Success = $true
                 $outputContext.AuditLogs.Add([PSCustomObject]@{
-                        Message = 'Update MS-Entra account in delete action was successful'
+                        Message = $auditMessage
                         IsError = $false
                     })
                 break
@@ -260,6 +276,9 @@ try {
                     Properties = $exoAccountPropertiesToQuery
                 }
                 $correlatedAccountExo = Get-EXOMailbox @getExoAccountSplatParams  -Verbose:$false -ErrorAction Stop
+                $outputContext.PreviousData | Add-Member @{
+                    exchangeOnline = $correlatedAccountExo
+                } -Force
                 if ($correlatedAccountExo.Count -lt 1) {
                     Write-Information "MS-Exo mailbox: [$($actionContext.References.Account)] could not be found,  possibly indicating that it already has been deleted"
                     $outputContext.Success = $true
@@ -274,13 +293,28 @@ try {
                     $splatUpdateExoAccount = @{
                         Identity = $actionContext.References.Account
                     }
-                    foreach ($exoAccountProperty in $actionContext.Data.exchangeOnline.PsObject.Properties) {
-                        if ($exoAccountProperty.Name -eq 'HiddenFromAddressListsEnabled') {
-                            $splatUpdateExoAccount['HiddenFromAddressListsEnabled'] = [bool]::Parse($exoAccountProperty.Value)
-                            continue
+                    switch ($actionContext.Origin) {
+                        'enforcement' {
+                            $auditMessage = 'Update of MS-Exo mailbox in delete action was successful'
+                            foreach ($exoAccountProperty in $actionContext.Data.exchangeOnline.PsObject.Properties) {
+                                if ($exoAccountProperty.Name -eq 'HiddenFromAddressListsEnabled') {
+                                    $splatUpdateExoAccount['HiddenFromAddressListsEnabled'] = [bool]::Parse($exoAccountProperty.Value)
+                                    continue
+                                }
+                                $splatUpdateExoAccount[$exoAccountProperty.Name] = $exoAccountProperty.Value
+                            }
+                            break
                         }
-                        $splatUpdateExoAccount[$exoAccountProperty.Name] = $exoAccountProperty.Value
+                        'reconciliation' {
+                            $auditMessage = "Update MS-Exo mailbox [$($actionContext.References.Account)] HiddenFromAddressListsEnabled to True was successful (reconciliation)"
+                            $splatUpdateExoAccount['HiddenFromAddressListsEnabled'] = $true
+                            break
+                        }
+                        default {
+                            throw "Unknown action origin: [$($actionContext.Origin)] Valid values are 'reconciliation' or 'enforcement'."
+                        }
                     }
+
                     if (-not($actionContext.DryRun -eq $true)) {
                         $null = Set-Mailbox @splatUpdateExoAccount -Verbose:$false -ErrorAction Stop
                     } else {
@@ -288,7 +322,7 @@ try {
                     }
                     $outputContext.Success = $true
                     $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Message = 'Update of MS-Exo mailbox in delete action was successful'
+                            Message = $auditMessage
                             IsError = $false
                         })
                 }
@@ -312,14 +346,29 @@ try {
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-MS-Entra-ExoError -ErrorObject $ex
-        $auditMessage = "Could not delete MS-Entra-Exo account. Error: $($errorObj.FriendlyMessage)"
+        $auditMessage = "Error $($actionMessage).  Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     } else {
-        $auditMessage = "Could not delete MS-Entra-Exo account. Error: $($_.Exception.Message)"
+        $auditMessage = "Error $($actionMessage). Error: $($_.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
             Message = $auditMessage
             IsError = $true
         })
+} finally {
+    # Filling the None output context with values from the Entra and Exo accounts.
+    foreach ($property in $outputContext.Data.PSObject.Properties) {
+        if ($property.name -notin $actionContext.Data.PSObject.Properties.Name ) {
+            $outputContext.Data.$($property.name) = $correlatedAccountEntra.$($property.name)
+        }
+    }
+
+    if ($actionContext.Configuration.ExchangeOnlineIntegration) {
+        foreach ($property in $outputContext.Data.ExchangeOnline.PSObject.Properties) {
+            if ($property.name -notin $actionContext.Data.ExchangeOnline.PSObject.Properties.Name ) {
+                $outputContext.Data.ExchangeOnline.$($property.name) = $correlatedAccountExo.$($property.name)
+            }
+        }
+    }
 }
