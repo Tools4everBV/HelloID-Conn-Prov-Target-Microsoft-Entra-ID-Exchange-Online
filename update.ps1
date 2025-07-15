@@ -202,6 +202,22 @@ function ConvertTo-EntraUpdateBody {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
+
+function Convert-StringBooleanToBoolean {
+    param (
+        [Parameter(Mandatory)]
+        $InputObject
+    )
+    foreach ($property in $InputObject.PSObject.Properties) {
+        if ($property.TypeNameOfValue -eq 'System.Management.Automation.PSCustomObject') {
+            Convert-StringBooleanToBoolean -InputObject $property.Value
+        } else {
+            if ($property.Value -eq 'True' -or $property.Value -eq 'False') {
+                $InputObject."$($property.Name)" = [bool]::Parse($property.Value)
+            }
+        }
+    }
+}
 #endregion
 
 try {
@@ -501,6 +517,9 @@ try {
             IsError = $true
         })
 } finally {
+    # Convert string booleans to actual booleans
+    $null = Convert-StringBooleanToBoolean -InputObject $outputContext.Data
+
     # Filling the None output context with values from the Entra and Exo accounts.
     foreach ($property in $outputContext.Data.PSObject.Properties) {
         if ($property.name -notin $actionContext.Data.PSObject.Properties.Name ) {

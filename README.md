@@ -23,6 +23,7 @@
       - [App Registration](#app-registration)
       - [Creating a new app registration](#creating-a-new-app-registration)
       - [Configuring permissions](#configuring-permissions)
+        - [Exchange Permissions](#exchange-permissions)
       - [Authentication and Authorization](#authentication-and-authorization)
       - [Certificate](#certificate)
     - [Connection settings](#connection-settings)
@@ -35,6 +36,7 @@
       - [Hardcoded boolean values](#hardcoded-boolean-values)
       - [Hardcoded mapping](#hardcoded-mapping)
     - [`updateManagerOnUpdate` can be deleted](#updatemanageronupdate-can-be-deleted)
+    - [Governance Remarks](#governance-remarks)
     - [ExO PowerShell module](#exo-powershell-module)
     - [`Connect-ManagedExchangeOnline`](#connect-managedexchangeonline)
     - [Script flow](#script-flow)
@@ -68,21 +70,22 @@ If you’d like to use this connector, please contact your account manager.
 
 The following features are available:
 
-| Feature                             | Supported | Actions / Type                                           | Remarks |
-| ----------------------------------- | --------- | -------------------------------------------------------- | ------- |
-| **Account Lifecycle**               | ✅         | Create, Update, Enable, Disable, Delete                  |         |
-| **Permissions**                     | ✅         | Groups, Licenses, Phone and Email authentication methods |         |
-| **Resources**                       | ❌         | -                                                        |         |
-| **Uniqueness**                      | ✅         | -                                                        |         |
-| **Entitlement Import: Accounts**    | ❌         | -                                                        |         |
-| **Entitlement Import: Permissions** | ✅         | -                                                        |         |
+| Feature                                   | Supported | Actions / Type                                            | Remarks |
+| ----------------------------------------- | --------- | --------------------------------------------------------- | ------- |
+| **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                   |         |
+| **Permissions**                           | ✅         | Groups, Licenses, Phone and Email authentication methods  |         |
+| **Resources**                             | ❌         | -                                                         |         |
+| **Uniqueness**                            | ✅         | -                                                         |         |
+| **Entitlement Import: Accounts**          | ✅         | -                                                         |         |
+| **Entitlement Import: Permissions**       | ✅         | -                                                         |         |
+| **Governance Reconciliation Resolutions** | ✅         | Reconciliation  [Governance Remarks](#governance-remarks) |         |
 
 ### Permissions
 
 The following permissions are available:
 
 - Groups
-- Licences
+- Licenses
 - Phone authentication methods
 - Email authentication methods
 
@@ -128,10 +131,28 @@ After registration, configure API permissions so the app can interact with Micro
    - `Group.ReadWrite.All`
    - `GroupMember.ReadWrite.All`
    - `UserAuthenticationMethod.ReadWrite.All`
+   - `User.EnableDisableAccount.All`
+   - `User-PasswordProfile.ReadWrite.All`
+   - `User-Phone.ReadWrite.All`
 5. Click **Add permissions**.
 6. Click **Grant admin consent for [Your Tenant]** if required.
 
 More info: [Configure a client app to access a web API](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-configure-app-access-web-apis).
+
+##### Exchange Permissions
+**Assign API Permissions**
+1. Go to the app’s **API permissions** section.
+2. Click **Add a permission**.
+3. Choose **Microsoft Graph**.
+4. Select **Application permissions** and add:
+5. From the Request API Permissions screen, click **Office 365 Exchange Online**
+   - If "Office 365 Exchange Online" is not selectable, go to "APIs my organization uses" and search for "Office 365 Exchange Online".
+6. Click **Add permissions**.
+7. Click **Grant admin consent** for the selected permissions (requires admin privileges).
+
+**Assign Entra ID Roles to the Application**
+
+The **Recipient Management** role should provide the required permissions for the application.
 
 #### Authentication and Authorization
 
@@ -253,6 +274,16 @@ $createExoAccountSplatParams = @{
 ### `updateManagerOnUpdate` can be deleted
 
 The `updateManagerOnUpdate` switch can potentially be removed by simply checking the `managerId`. If it is not mapped in the update, we do not perform the action. This simplifies the process by eliminating the need for an explicit switch to control whether the manager update is applied.
+
+
+### Governance Remarks
+The import and reconciliation features of HelloID can be fully utilized with the Microsoft Entra EXO connector. However, there is a small difference in how the Disable and Delete actions are handled. Actions triggered by reconciliation use hardcoded fields instead of the configured field mapping, because there is no person context available during reconciliation. This limitation applies only to reconciliation, not to enforcement.
+
+The properties updated during Delete and Disable actions triggered by reconciliation are shown below. If these defaults do not meet customer requirements, they can be easily adjusted in the script. A switch determines how the request body is created based on the origin, either `enforcement` or `reconciliation`. The enforcement option is dynamic and uses the field mapping, while the reconciliation option is hardcoded.
+
+- `accountEnabled = $false`
+- `HiddenFromAddressListsEnabled = $true`  *EXO only
+
 
 ### ExO PowerShell module
 
