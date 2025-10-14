@@ -7,6 +7,10 @@
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
+# Script Configuration, only Required for ExchangeOnlineIntegration.
+$entraMailboxFallbackLookupProperty = 'givenName'
+$correlationValue = $personContext.Person.ExternalId
+
 #region functions
 function Resolve-MS-Entra-ExoError {
     [CmdletBinding()]
@@ -159,12 +163,6 @@ $fieldsToCheck = [PSCustomObject]@{
         keepInSyncWith  = @('userPrincipalName', 'mail') # Properties to synchronize with. If this property isn't unique, these properties will also be treated as non-unique.
         crossCheckOn    = $null # Properties to cross-check for uniqueness.
     }
-    'displayName'                   = [PSCustomObject]@{ # Value returned to HelloID in NonUniqueFields.
-        systemFieldName = 'displayName' # Name of the field in the system itself, to be used in the query to the system.
-        accountValue    = $actionContext.Data.displayName
-        keepInSyncWith  = $null # Properties to synchronize with. If this property isn't unique, these properties will also be treated as non-unique.
-        crossCheckOn    = $null # Properties to cross-check for uniqueness.
-    }
     'exchangeOnline.emailAddresses' = [PSCustomObject]@{ # Value returned to HelloID in NonUniqueFields.
         systemFieldName = 'proxyAddresses' # Name of the field in the system itself, to be used in the query to the system.
         accountValue    = $actionContext.Data.exchangeOnline.emailAddresses
@@ -200,6 +198,23 @@ try {
         $actionMessage = 'verifying account reference'
         if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
             throw 'The account reference could not be found'
+        }
+    } else {
+        if ([string]::IsNullOrEmpty($correlationValue)) {
+            throw 'The correlation value could not be found on the person'
+        }
+        # Get Entra account on Fallback field to handle ExchangeOnlineIntegration where the correlation field is not yet populated
+        $actionMessage = "querying MS-Entra account on fallback field where [$entraMailboxFallbackLookupProperty] = [$($correlationValue)]"
+        $selectPropertiesToGetUser = ($outputContext.Data | Select-Object * -ExcludeProperty ExchangeOnline, managerId ).PSObject.Properties.Name -join ','
+        $splatGetEntraUser = @{
+            Uri     = "https://graph.microsoft.com/v1.0/users?`$filter=$entraMailboxFallbackLookupProperty eq '$($correlationValue)'&`$select=$selectPropertiesToGetUser"
+            Method  = 'GET'
+            Headers = @{'Authorization' = "Bearer $($entraToken)" }
+        }
+        $correlatedAccountEntraFallBack = (Invoke-RestMethod @splatGetEntraUser).value
+        Write-Warning "correlatedAccountEntraFallBack: $($correlatedAccountEntraFallBack | ConvertTo-Json)"
+        if ($correlatedAccountEntraFallBack.Count -eq 1) {
+            $actionContext.References.Account = $correlatedAccountEntraFallBack.id
         }
     }
 

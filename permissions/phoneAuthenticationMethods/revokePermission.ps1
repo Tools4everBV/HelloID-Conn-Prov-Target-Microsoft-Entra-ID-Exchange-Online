@@ -194,19 +194,19 @@ try {
     }
 
     $currentPhoneAuthenticationMethods = (Invoke-RestMethod @getCurrentPhoneAuthenticationMethodsSplatParams).Value
-    $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Name)" }).phone
+    $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Type)" }).phone
 
     if ($null -ne $correlatedAccountEntra) {
     if (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 1) {
         if ($removeWhenRevokingEntitlement -eq $false) {
-            $actionPhoneAuthenticationMethod = "SkipDelete"
+            $action = "SkipDelete"
         }
         else {
-            $actionPhoneAuthenticationMethod = "RevokePermission"
+            $action = "RevokePermission"
         }
     }
     elseif (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 0) {
-        $actionPhoneAuthenticationMethod = "NoExistingData-SkipDelete"
+        $action = "NoExistingData-SkipDelete"
     }
     } else {
         $action = 'NotFound'
@@ -239,6 +239,7 @@ try {
         'SkipDelete' {
             $actionMessage = "skipping deleting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
             Write-Information $actionMessage
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped deleting phone authentication method [$($actionContext.PermissionDisplayName)]. Reason: Configured to not delete on revoke of entitlement"
@@ -250,6 +251,7 @@ try {
         'NoExistingData-SkipDelete' {
             $actionMessage = "skipping deleting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
             Write-Information $actionMessage
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped deleting phone authentication method [$($actionContext.PermissionDisplayName)]. Reason: Nothing to delete"
@@ -260,7 +262,7 @@ try {
 
         'NotFound' {
             Write-Information "MS-Entra account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-            $outputContext.Success  = $false
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
                 IsError = $false

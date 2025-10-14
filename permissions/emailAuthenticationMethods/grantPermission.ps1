@@ -205,10 +205,10 @@ try {
             $currentEmailAuthenticationMethod = $currentEmailAuthenticationMethod.replace(" ", "")
             if ($currentEmailAuthenticationMethod -ne $email) {
                 if ($updatePermissionWhenEmpty -eq $true) {
-                    $actionEmailAuthenticationMethod = "ExistingData-SkipUpdate"
+                    $action = "ExistingData-SkipUpdate"
                 }
                 else {
-                    $actionEmailAuthenticationMethod = "UpdatePermission"
+                    $action = "UpdatePermission"
                 }
             } else {
                 $action = 'NoChanges'
@@ -279,7 +279,7 @@ try {
         'NoChanges' {
             $actionMessage = "skipping setting email authentication method [$($actionContext.PermissionDisplayName)] for account"
             Write-Information $actionMessage
-            $outputContext.Success  = $true
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped setting email authentication method [$($actionContext.PermissionDisplayName)]. Reason: No changes"
@@ -291,7 +291,7 @@ try {
         'ExistingData-SkipUpdate' {
             $actionMessage = "skipping setting email authentication method [$($actionContext.PermissionDisplayName)] for account"
             Write-Information $actionMessage
-            $outputContext.Success  = $true
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped setting email authentication method [$($actionContext.PermissionDisplayName)]. Reason: Configured to only update when empty but already contains data"
@@ -301,7 +301,7 @@ try {
 
         'NotFound' {
             Write-Information "MS-Entra account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-            $outputContext.Success  = $false
+            $outputContext.Success = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
                 IsError = $true

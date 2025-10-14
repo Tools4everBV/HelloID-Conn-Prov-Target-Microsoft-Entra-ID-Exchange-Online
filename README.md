@@ -15,9 +15,7 @@
 - [HelloID-Conn-Prov-Target-MS-Entra-Exo](#helloid-conn-prov-target-ms-entra-exo)
   - [Table of contents](#table-of-contents)
   - [Introduction](#introduction)
-  - [Private repository](#private-repository)
   - [Supported  features](#supported--features)
-    - [Permissions](#permissions)
   - [Getting started](#getting-started)
     - [Prerequisites](#prerequisites)
       - [App Registration](#app-registration)
@@ -32,13 +30,13 @@
   - [Remarks](#remarks)
     - [Correlation value](#correlation-value)
       - [Fallback property (ExO only)](#fallback-property-exo-only)
-      - [properties without the `exchangeOnline` prefix](#properties-without-the-exchangeonline-prefix)
+      - [properties without the exchangeOnline prefix](#properties-without-the-exchangeonline-prefix)
       - [Hardcoded boolean values](#hardcoded-boolean-values)
       - [Hardcoded mapping](#hardcoded-mapping)
-    - [`updateManagerOnUpdate` can be deleted](#updatemanageronupdate-can-be-deleted)
+    - [updateManagerOnUpdate can be deleted](#updatemanageronupdate-can-be-deleted)
     - [Governance Remarks](#governance-remarks)
     - [ExO PowerShell module](#exo-powershell-module)
-    - [`Connect-ManagedExchangeOnline`](#connect-managedexchangeonline)
+    - [Connect-ManagedExchangeOnline](#connect-managedexchangeonline)
     - [Script flow](#script-flow)
       - [1. Preparation](#1-preparation)
       - [2. Correlation Check](#2-correlation-check)
@@ -61,35 +59,19 @@ The _HelloID-Conn-Prov-Target-MS-Entra-Exo_ connector supports both _Microsoft E
 > [!NOTE]
 > When using _MS Exchange Online_, note that licensing must be configured separately, for example by using group memberships.
 
-## Private repository
-
-The _HelloID-Conn-Prov-Target-MS-Entra-Exo_ is currently a __private__ repository because the _Microsoft Exchange Online_ functionality is controlled by a _feature flag_.
-If you’d like to use this connector, please contact your account manager.
-
 ## Supported  features
 
 The following features are available:
 
-| Feature                                   | Supported | Actions / Type                                            | Remarks |
-| ----------------------------------------- | --------- | --------------------------------------------------------- | ------- |
-| **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                   |         |
-| **Permissions**                           | ✅         | Groups, Licenses, Phone and Email authentication methods  |         |
-| **Resources**                             | ❌         | -                                                         |         |
-| **Uniqueness**                            | ✅         | -                                                         |         |
-| **Entitlement Import: Accounts**          | ✅         | -                                                         |         |
-| **Entitlement Import: Permissions**       | ✅         | -                                                         |         |
-| **Governance Reconciliation Resolutions** | ✅         | Reconciliation  [Governance Remarks](#governance-remarks) |         |
-
-### Permissions
-
-The following permissions are available:
-
-- Groups
-- Licenses
-- Phone authentication methods
-- Email authentication methods
-
-Note that for both groups and licenses, the _import_ feature is also supported.
+| Feature                                   | Supported | Actions / Type                                                                | Remarks                                              |
+| ----------------------------------------- | --------- | ----------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                                       |                                                      |
+| **Permissions**                           | ✅         | Groups (static and dynamic), Licenses, Phone and Email authentication methods |                                                      |
+| **Resources**                             | ❌         | -                                                                             |                                                      |
+| **Uniqueness**                            | ✅         | -                                                                             |                                                      |
+| **Entitlement Import: Accounts**          | ✅         | -                                                                             |                                                      |
+| **Entitlement Import: Permissions**       | ✅         | Groups and Licenses                                                           | No import for Phone and Email authentication methods |
+| **Governance Reconciliation Resolutions** | ✅         | Reconciliation  [Governance Remarks](#governance-remarks)                     |                                                      |
 
 ## Getting started
 
@@ -147,32 +129,27 @@ More info: [Configure a client app to access a web API](https://learn.microsoft.
 4. Select **Application permissions** and add:
 5. From the Request API Permissions screen, click **Office 365 Exchange Online**
    - If "Office 365 Exchange Online" is not selectable, go to "APIs my organization uses" and search for "Office 365 Exchange Online".
-6. Click **Add permissions**.
-7. Click **Grant admin consent** for the selected permissions (requires admin privileges).
+6. Select **Application permissions** and add.
+   - `Exchange.ManageAsApp`  
+7. Click **Add permissions**.   
+8. Click **Grant admin consent** for the selected permissions (requires admin privileges).
 
 **Assign Entra ID Roles to the Application**
-
-The **Recipient Management** role should provide the required permissions for the application.
+1. Go to the EntraID **Roles and administrators** section.
+2. Search and click the **Exchange Recipient Administrator** role.
+3. Choose **Add Assignments**.
+4. Search for the created app registration and click **Add**. 
 
 #### Authentication and Authorization
 
-To authenticate with the Graph API, you’ll need credentials for your app. The recommended approach is to use a **Client Secret**.
+To authenticate with the Graph API, you’ll need credentials for your app. The recommended approach is to use a **Certificate**.
 
-1. **Get the Tenant ID**:
-   - Go to **Azure Active Directory** > **Overview**.
-   - Copy the **Tenant ID**.
+1. **Get the certificate**
+  - Go to the app you registered in Microsoft Entra ID.
+  - Navigate to Client Credentials: Add a certificate or secret.
+  - Upload the public key file [.cer] file.
 
-2. **Get the Client ID**:
-   - Go to **App registrations**, select your app.
-   - Copy the **Application (client) ID**.
-
-3. **Create a Client Secret**:
-   - Navigate to **Certificates & secrets** in your app.
-   - Under **Client secrets**, click **New client secret**.
-   - Enter a description and select an expiration.
-   - Click **Add**, and **copy the value immediately**—you won’t be able to see it again.
-
-More info: [Add credentials](https://learn.microsoft.com/en-us/graph/auth-register-app-v2#add-credentials).
+More info: [Certificate](#certificate).
 
 #### Certificate
 
@@ -243,7 +220,7 @@ $entraMailboxFallbackLookupProperty = 'givenName'
 $exchangeMailboxFallbackLookupProperty = 'FirstName'
 ```
 
-#### properties without the `exchangeOnline` prefix
+#### properties without the exchangeOnline prefix
 
 Mapped properties without the `exchangeOnline` prefix are updated through _GraphAPI_.
 
@@ -271,7 +248,7 @@ $createExoAccountSplatParams = @{
 }
 ```
 
-### `updateManagerOnUpdate` can be deleted
+### updateManagerOnUpdate can be deleted
 
 The `updateManagerOnUpdate` switch can potentially be removed by simply checking the `managerId`. If it is not mapped in the update, we do not perform the action. This simplifies the process by eliminating the need for an explicit switch to control whether the manager update is applied.
 
@@ -289,7 +266,7 @@ The properties updated during Delete and Disable actions triggered by reconcilia
 
 Within HelloID, version _3.5.1_ of the Exchange Online module is being used. https://www.powershellgallery.com/packages/ExchangeOnlineManagement/3.5.1
 
-### `Connect-ManagedExchangeOnline`
+### Connect-ManagedExchangeOnline
 
 The connector depends on the `Connect-ManagedExchangeOnline` cmdlet. Note that this cmdlet is __not available__ on your local machine.
 
@@ -340,17 +317,24 @@ Actions are executed in order:
 
 The following endpoints are used by the connector
 
-| Endpoint | Description               |
-| -------- | ------------------------- |
-| /Users   | Retrieve user information |
+| Endpoint                                               | Description                     |
+| ------------------------------------------------------ | ------------------------------- |
+| /Users                                                 | handle user information         |
+| /Users/_$accountreference_/assignLicense               | Handle licenses information     |
+| /Users/_$accountreference_/authentication/phoneMethods | Handle phoneMethods information |
+| /Users/_$accountreference_/authentication/emailMethods | Handle emailMethods information |
+| /Groups                                                | Handle group information        |
 
 ### ExO documentation
 
 The following cmdlets are used by the connector
 
-| Cmdlet | Description               |
-| ------ | ------------------------- |
-| /Users | Retrieve user information |
+| Cmdlet                        | Description                |
+| ----------------------------- | -------------------------- |
+| Connect-ManagedExchangeOnline | Connect to exchange online |
+| Get-EXOMailbox                | Retrieve mailbox           |
+| New-Mailbox                   | Create mailbox             |
+| Set-Mailbox                   | Update mailbox             |
 
 ## Getting help
 

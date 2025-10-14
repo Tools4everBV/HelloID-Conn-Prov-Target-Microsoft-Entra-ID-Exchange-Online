@@ -193,8 +193,8 @@ try {
         ErrorAction = "Stop"
     }
     $currentPhoneAuthenticationMethods = (Invoke-RestMethod @getCurrentPhoneAuthenticationMethodsSplatParams).Value
-    $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Name)" }).phone
-    switch ($actionContext.References.Permission.Name) {
+    $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Type)" }).phone
+    switch ($actionContext.References.Permission.Type) {
         "mobile" {
             $phoneNumber = $personContext.Person.Contact.Business.Phone.Mobile
             break
@@ -236,10 +236,10 @@ try {
             $currentPhoneAuthenticationMethod = $currentPhoneAuthenticationMethod.replace(" ", "")
             if ($currentPhoneAuthenticationMethod -ne $($phoneNumber)) {
                 if ($updatePermissionWhenEmpty -eq $true) {
-                    $actionPhoneAuthenticationMethod = "ExistingData-SkipUpdate"
+                    $action = "ExistingData-SkipUpdate"
                 }
                 else {
-                    $actionPhoneAuthenticationMethod = "UpdatePermission"
+                    $action = "UpdatePermission"
                 }
             }
             else {
@@ -315,6 +315,7 @@ try {
         "NoChanges" {
             $actionMessage = "skipping setting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
             Write-Information $actionMessage
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped setting phone authentication method [$($actionContext.PermissionDisplayName)]. Reason: No changes"
@@ -325,6 +326,7 @@ try {
 
         "ExistingData-SkipUpdate" {
             $actionMessage = "skipping setting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped setting phone authentication method [$($actionContext.PermissionDisplayName)]. Reason: Configured to only update when empty but already contains data"
@@ -335,7 +337,7 @@ try {
 
         'NotFound' {
             Write-Information "MS-Entra account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-            $outputContext.Success  = $false
+            $outputContext.Success = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
                 IsError = $true

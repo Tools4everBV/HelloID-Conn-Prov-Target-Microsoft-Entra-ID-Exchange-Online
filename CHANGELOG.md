@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [1.2.1] - 14-10-2025
+
+### Changed
+- Fixed: Granting already granted permissions no longer results in an error.
+- Fixed: Retrieving security groups.
+- Fixed: `Update` action does no longer result in an error when no ExchangeOnline properties are required to be updated.
+- Fixed: `Update` action now supports the switch between primary and alias.
+- Fixed: `UniquenessCheck` now supports the issue that occurred when mailbox was created but the `Create` action fails.
+- Fixed: Issue in the PhoneAuthenticationMethod where the `Grant` and `Revoke` looked up the wrong permission property.
+- Fixed: Actions in `Grant` and `Revoke` for email and phone authenticationMethods now work correctly.
+- Improvements to the `Readme`.
+
+### Removed
+- Removed: displayName from the `UniquenessCheck` script.
 
 ## [1.2.0] - 10-07-2025
 

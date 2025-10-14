@@ -345,13 +345,32 @@ try {
                 $correlatedAccountExo.HiddenFromAddressListsEnabled = [string]$correlatedAccountExo.HiddenFromAddressListsEnabled
             }
 
-            $splatComparePropertiesExo = @{
-                ReferenceObject  = @((ConvertTo-FlatObject -Object $correlatedAccountExo).PSObject.Properties)
-                DifferenceObject = @((ConvertTo-FlatObject -Object $actionContext.Data.exchangeOnline | Select-Object * ).PSObject.Properties)
-            }
-            $propertiesChangedExo = Compare-Object @splatComparePropertiesExo -PassThru | Where-Object { $_.SideIndicator -eq '=>' }
-            if ($propertiesChangedExo) {
-                $actionList.Add('UpdateAccountExo')
+            if ($null -ne $actionContext.Data.exchangeOnline) {
+                $splatComparePropertiesExo = @{
+                    ReferenceObject  = @((ConvertTo-FlatObject -Object $correlatedAccountExo).PSObject.Properties)
+                    DifferenceObject = @((ConvertTo-FlatObject -Object $actionContext.Data.exchangeOnline | Select-Object * ).PSObject.Properties)
+                }
+                $propertiesChangedExo = Compare-Object @splatComparePropertiesExo -PassThru | Where-Object { $_.SideIndicator -eq '=>' }
+                if ($propertiesChangedExo) {
+                    $actionList.Add('UpdateAccountExo')
+                }
+
+                # Separate compare for EmailAddresses
+                if ($correlatedAccountExo.EmailAddresses.count -gt 0 -and $actionContext.Data.exchangeOnline.EmailAddresses.Count -gt 0) {
+                    $correlatedAccountEmailAddresses = $correlatedAccountExo.EmailAddresses
+                    $actionContextDataEmailAddresses = $actionContext.Data.exchangeOnline.EmailAddresses
+
+                    $onlyInCorrelatedAccount = $correlatedAccountEmailAddresses | Where-Object { -not ($actionContextDataEmailAddresses -ccontains $_) }
+                    $onlyInActionContextData = $actionContextDataEmailAddresses | Where-Object { -not ($correlatedAccountEmailAddresses -ccontains $_) }
+
+                    $emailAddressesChangedExo = @()
+                    $emailAddressesChangedExo += $onlyInCorrelatedAccount | ForEach-Object { [PSCustomObject]@{ InputObject = $_; SideIndicator = '<=' } }
+                    $emailAddressesChangedExo += $onlyInActionContextData | ForEach-Object { [PSCustomObject]@{ InputObject = $_; SideIndicator = '=>' } }
+
+                    if ($emailAddressesChangedExo) {
+                        $actionList.Add('UpdateAccountExo')
+                    }
+                }
             }
         }
     }
