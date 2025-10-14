@@ -239,6 +239,7 @@ try {
         'SkipDelete' {
             $actionMessage = "skipping deleting email authentication method [$($actionContext.PermissionDisplayName)] for account"
             Write-Information $actionMessage
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped deleting email authentication method [$($actionContext.PermissionDisplayName)] for account with AccountReference. Reason: Configured to not delete on revoke of entitlement."
@@ -250,7 +251,7 @@ try {
         'NoExistingData-SkipDelete' {
             $actionMessage = "skipping deleting email authentication method [$($actionContext.PermissionDisplayName)] for account"
             Write-Information $actionMessage
-            $outputContext.Success  = $true
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
                     Message = "Skipped deleting email authentication method [$($actionContext.PermissionDisplayName)]. Reason: Nothing to delete"
@@ -262,7 +263,7 @@ try {
 
         'NotFound' {
             Write-Information "MS-Entra account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-            $outputContext.Success  = $false
+            $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
                 IsError = $false

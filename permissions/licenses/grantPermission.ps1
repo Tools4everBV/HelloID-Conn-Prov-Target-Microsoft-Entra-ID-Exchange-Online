@@ -208,7 +208,13 @@ try {
             }
             if (-not($actionContext.DryRun -eq $true)) {
                 Write-Information "Granting MS-Entra-Exo license: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
-                $grantedPermission = Invoke-RestMethod @grantPermissionSplatParams
+                try {
+                    $grantedPermission = Invoke-RestMethod @grantPermissionSplatParams
+                } catch {
+                    if (($_.ErrorDetails.Message | ConvertFrom-Json).error.message -ne 'One or more added object references already exist for the following modified properties: ''members''.') {
+                        throw $_.ErrorDetails.Message
+                    }
+                }
             }
             else {
                 Write-Information "[DryRun] Grant MS-Entra-Exo license: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"

@@ -204,7 +204,13 @@ try {
                         "@odata.id" = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
                     } | ConvertTo-Json -Depth 10
                 }
-                $null = Invoke-RestMethod @splatGrantPermission
+                try {
+                    $null = Invoke-RestMethod @splatGrantPermission
+                } catch {
+                    if (($_.ErrorDetails.Message | ConvertFrom-Json).error.message -ne 'One or more added object references already exist for the following modified properties: ''members''.') {
+                        throw $_.ErrorDetails.Message
+                    }
+                }
             } else {
                 Write-Information "[DryRun] Grant MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
             }

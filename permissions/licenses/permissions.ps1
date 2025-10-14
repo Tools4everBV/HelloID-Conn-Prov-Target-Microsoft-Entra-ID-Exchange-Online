@@ -180,22 +180,22 @@ try {
         else {
             [void]$microsoftEntraIDLicenses.Add($getMicrosoftEntraIDLicensesResult.Value)
         }
-    } while (-not[string]::IsNullOrEmpty($getMicrosoftEntraIDLicensesResult.'@odata.nextLink'))
 
-    $microsoftEntraIDLicenses | ForEach-Object {
-        # Shorten DisplayName to max. 100 chars
-        $displayName = "License - $($_.skuPartNumber)"
-        $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length))
+        $microsoftEntraIDLicenses | ForEach-Object {
+            # Shorten DisplayName to max. 100 chars
+            $displayName = "License - $($_.skuPartNumber)"
+            $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length))
 
-        $outputContext.Permissions.Add(
-            @{
-                displayName    = $displayName
-                identification = @{
-                    Reference = $_.skuId
+            $outputContext.Permissions.Add(
+                @{
+                    displayName    = $displayName
+                    identification = @{
+                        Reference = $_.skuId
+                    }
                 }
-            }
-        )
-    }
+            )
+        }
+    } while (-not[string]::IsNullOrEmpty($getMicrosoftEntraIDLicensesResult.'@odata.nextLink'))
 }
 catch {
     $ex = $PSItem
