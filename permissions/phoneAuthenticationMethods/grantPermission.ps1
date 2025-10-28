@@ -230,6 +230,7 @@ try {
     }
 
     if ($null -ne $correlatedAccountEntra) {
+        $actionMessage = "calculating action"
         if (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 0) {
             $action = "GrantPermission"
         }
@@ -256,7 +257,7 @@ try {
         'GrantPermission' {
                 #region Create phoneAuthenticationMethod
                 # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/authentication-post-phonemethods?view=graph-rest-1.0&tabs=http
-                $actionMessage = "creating phone authentication method [$($actionContext.References.Permission.Name)] for account"
+                $actionMessage = "creating phone authentication method [$($actionContext.References.Permission.Name)] for account to [$phoneNumber]"
                 Write-Information $actionMessage
                 $createPhoneAuthenticationMethodSplatParams = @{
                     Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods"
@@ -284,7 +285,7 @@ try {
 
         'UpdatePermission' {
             # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-update?view=graph-rest-1.0&tabs=http
-            $actionMessage = "updating phone authentication method [$($actionContext.PermissionDisplayName)] for account with phone number [$phoneNumber]"
+            $actionMessage = "updating phone authentication method [$($actionContext.PermissionDisplayName)] for account to [$phoneNumber]"
             Write-Information $actionMessage
             $updatePhoneAuthenticationMethodSplatParams = @{
                 Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods/$($actionContext.References.Permission.Reference)"
@@ -301,7 +302,7 @@ try {
                 $null = Invoke-RestMethod @updatePhoneAuthenticationMethodSplatParams
             }
             else {
-                Write-Information "[DryRun] Update MS-Entra-Exo permission: [$($actionContext.References.Permission.Type)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "[DryRun] Update MS-Entra-Exo permission: [$($actionContext.References.Permission.Type)] to [$phoneNumber] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
