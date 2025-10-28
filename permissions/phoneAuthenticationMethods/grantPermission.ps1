@@ -4,7 +4,7 @@
 ##################################################################################
 
 # Permission configuration
-$updatePermissionWhenEmpty = $false
+$onlySetMobileWhenEmpty = $true
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -193,20 +193,21 @@ try {
         ErrorAction = "Stop"
     }
     $currentPhoneAuthenticationMethods = (Invoke-RestMethod @getCurrentPhoneAuthenticationMethodsSplatParams).Value
-    $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Type)" }).phone
+    $currentPhoneAuthenticationMethod = ($currentPhoneAuthenticationMethods | Where-Object { $_.phoneType -eq "$($actionContext.References.Permission.Type)" }).phoneNumber
+
     switch ($actionContext.References.Permission.Type) {
         "mobile" {
-            $phoneNumber = $personContext.Person.Contact.Business.Phone.Mobile
+            $phoneNumber = $PersonContext.Person.Contact.Personal.Phone.Mobile
             break
         }
 
         "alternateMobile" {
-            $phoneNumber = $personContext.Person.Contact.Business.Phone.Fixed
+            $phoneNumber = $PersonContext.Person.Contact.Personal.Phone.Mobile
             break
         }
 
         "office" {
-            $phoneNumber = $personContext.Person.Contact.Personal.Phone.Mobile
+            $phoneNumber = $PersonContext.Person.Contact.Business.Phone.Mobile
             break
         }
     }
@@ -232,15 +233,13 @@ try {
         if (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 0) {
             $action = "GrantPermission"
         }
+        elseif ($onlySetMobileWhenEmpty -eq $true) {
+            $action = "ExistingData-SkipUpdate"
+        }
         elseif (($currentPhoneAuthenticationMethod | Measure-Object).count -eq 1) {
             $currentPhoneAuthenticationMethod = $currentPhoneAuthenticationMethod.replace(" ", "")
             if ($currentPhoneAuthenticationMethod -ne $($phoneNumber)) {
-                if ($updatePermissionWhenEmpty -eq $true) {
-                    $action = "ExistingData-SkipUpdate"
-                }
-                else {
-                    $action = "UpdatePermission"
-                }
+                $action = "UpdatePermission"
             }
             else {
                 $action = "NoChanges"
@@ -249,6 +248,8 @@ try {
     } else {
         $action = 'NotFound'
     }
+
+    Write-Information "Processing action [$action]"
 
     # Process
     switch ($action) {
@@ -267,12 +268,11 @@ try {
                     } | ConvertTo-Json -Depth 10
                     Verbose = $false
                 }
-
                 if (-not($actionContext.DryRun -eq $true)) {
                     $null = Invoke-RestMethod @createPhoneAuthenticationMethodSplatParams
                 }
                 else {
-                Write-Information "[DryRun] Grant MS-Entra-Exo PhoneAuthenticationMethod: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "[DryRun] Grant MS-Entra-Exo PhoneAuthenticationMethod: [$($actionContext.References.Permission.Type)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
@@ -284,7 +284,7 @@ try {
 
         'UpdatePermission' {
             # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/phoneauthenticationmethod-update?view=graph-rest-1.0&tabs=http
-            $actionMessage = "updating phone authentication method [$($actionContext.PermissionDisplayName)] for account"
+            $actionMessage = "updating phone authentication method [$($actionContext.PermissionDisplayName)] for account with phone number [$phoneNumber]"
             Write-Information $actionMessage
             $updatePhoneAuthenticationMethodSplatParams = @{
                 Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/phoneMethods/$($actionContext.References.Permission.Reference)"
@@ -301,7 +301,7 @@ try {
                 $null = Invoke-RestMethod @updatePhoneAuthenticationMethodSplatParams
             }
             else {
-                Write-Information "[DryRun] Update MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "[DryRun] Update MS-Entra-Exo permission: [$($actionContext.References.Permission.Type)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
@@ -313,7 +313,7 @@ try {
         }
 
         "NoChanges" {
-            $actionMessage = "skipping setting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
+            $actionMessage = "skipping setting phone authentication method [$($actionContext.References.Permission.Type)] for account"
             Write-Information $actionMessage
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
@@ -325,7 +325,7 @@ try {
         }
 
         "ExistingData-SkipUpdate" {
-            $actionMessage = "skipping setting phone authentication method [$($actionContext.PermissionDisplayName)] for account"
+            $actionMessage = "skipping setting phone authentication method [$($actionContext.References.Permission.Type)] for account"
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                     # Action  = "" # Optional
@@ -336,7 +336,7 @@ try {
         }
 
         'NotFound' {
-            Write-Information "MS-Entra account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
+            Write-Information "MS-Entra account: [$($actionContext.References.Permission.Type)] could not be found, possibly indicating that it already has been deleted"
             $outputContext.Success = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
