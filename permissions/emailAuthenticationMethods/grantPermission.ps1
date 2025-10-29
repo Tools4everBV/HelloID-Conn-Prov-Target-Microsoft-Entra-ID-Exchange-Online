@@ -4,7 +4,7 @@
 ##################################################################################
 
 # Permission configuration
-$updatePermissionWhenEmpty = $false
+$onlySetEmailWhenEmpty = $true
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -201,15 +201,14 @@ try {
         $actionMessage = "calculating action"
         if (($currentEmailAuthenticationMethod | Measure-Object).count -eq 0) {
             $action = 'GrantPermission'
-        } elseif (($currentEmailAuthenticationMethod | Measure-Object).count -eq 1) {
+        }
+         elseif ($onlySetEmailWhenEmpty -eq $true) {
+            $action = "ExistingData-SkipUpdate"
+        }
+        elseif (($currentEmailAuthenticationMethod | Measure-Object).count -eq 1) {
             $currentEmailAuthenticationMethod = $currentEmailAuthenticationMethod.replace(" ", "")
             if ($currentEmailAuthenticationMethod -ne $email) {
-                if ($updatePermissionWhenEmpty -eq $true) {
-                    $action = "ExistingData-SkipUpdate"
-                }
-                else {
-                    $action = "UpdatePermission"
-                }
+                $action = "UpdatePermission"
             } else {
                 $action = 'NoChanges'
             }
@@ -222,7 +221,7 @@ try {
     switch ($action) {
         'GrantPermission' {
             # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/authentication-post-emailmethods?view=graph-rest-1.0&tabs=http
-            $actionMessage = "creating email authentication method [$($actionContext.PermissionDisplayName)] for account"
+            $actionMessage = "creating email authentication method [email] for account to [$email]"
             Write-Information $actionMessage
             $createEmailAuthenticationMethodSplatParams = @{
                 Uri      = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods"
@@ -236,7 +235,7 @@ try {
             if (-Not($actionContext.DryRun -eq $true)) {
                 $null = Invoke-RestMethod @createEmailAuthenticationMethodSplatParams
             } else {
-                Write-Information "[DryRun] Grant MS-Entra-Exo EmailAutenticationMethod: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "[DryRun] Grant MS-Entra-Exo EmailAutenticationMethod: [email] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
@@ -249,7 +248,7 @@ try {
 
         'UpdatePermission' {
             # Microsoft docs: https://learn.microsoft.com/nl-nl/graph/api/emailauthenticationmethod-update?view=graph-rest-1.0&tabs=http
-            $actionMessage = "updating email authentication method [$($actionContext.PermissionDisplayName)] for account"
+            $actionMessage = "updating email authentication method [email] for account to [$email]"
             Write-Information $actionMessage
             $updateEmailAuthenticationMethodSplatParams = @{
                 Uri    = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/authentication/emailMethods/$($actionContext.References.Permission.Reference)"
@@ -265,7 +264,7 @@ try {
                 $null = Invoke-RestMethod @updateEmailAuthenticationMethodSplatParams
             }
             else {
-                Write-Information "[DryRun] Update MS-Entra-Exo EmailAutenticationMethod : [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "[DryRun] Update MS-Entra-Exo EmailAutenticationMethod : [email] to [$email]- [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
@@ -277,7 +276,7 @@ try {
         }
 
         'NoChanges' {
-            $actionMessage = "skipping setting email authentication method [$($actionContext.PermissionDisplayName)] for account"
+            $actionMessage = "skipping setting email authentication method [email] for account"
             Write-Information $actionMessage
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
@@ -289,7 +288,7 @@ try {
         }
 
         'ExistingData-SkipUpdate' {
-            $actionMessage = "skipping setting email authentication method [$($actionContext.PermissionDisplayName)] for account"
+            $actionMessage = "skipping setting email authentication method [email] for account"
             Write-Information $actionMessage
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
@@ -300,7 +299,7 @@ try {
         }
 
         'NotFound' {
-            Write-Information "MS-Entra account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
+            Write-Information "MS-Entra account: [email] could not be found, possibly indicating that it already has been deleted"
             $outputContext.Success = $false
             $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
