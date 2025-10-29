@@ -1,8 +1,5 @@
 # HelloID-Conn-Prov-Target-MS-Entra-Exo
 
-> [!WARNING]
-> The _HelloID-Conn-Prov-Target-MS-Entra-Exo_ is currently a __private__ repository because the _Microsoft Exchange Online_ functionality is controlled by a _feature flag_.  If you’d like to use this connector, please contact your account manager.
-
 > [!IMPORTANT]
 > This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.
 
@@ -33,7 +30,6 @@
       - [properties without the exchangeOnline prefix](#properties-without-the-exchangeonline-prefix)
       - [Hardcoded boolean values](#hardcoded-boolean-values)
       - [Hardcoded mapping](#hardcoded-mapping)
-    - [updateManagerOnUpdate can be deleted](#updatemanageronupdate-can-be-deleted)
     - [Governance Remarks](#governance-remarks)
     - [ExO PowerShell module](#exo-powershell-module)
     - [Connect-ManagedExchangeOnline](#connect-managedexchangeonline)
@@ -56,8 +52,8 @@ _HelloID-Conn-Prov-Target-MS-Entra-Exo_ is a _target_ connector. _MS-Entra-Exo_ 
 
 The _HelloID-Conn-Prov-Target-MS-Entra-Exo_ connector supports both _Microsoft Entra_ combined with _Microsoft Exchange Online_, as well as standalone _Microsoft Entra_ environments. Integration with _Exchange Online_ can be enabled via the configuration by toggling the `Exchange Online integration` option.
 
-> [!NOTE]
-> When using _MS Exchange Online_, note that licensing must be configured separately, for example by using group memberships.
+[!NOTE]
+When using MS Exchange Online, please note that licensing must be configured separately, for example through group-based licensing (e.g., by assigning licenses via group memberships).
 
 ## Supported  features
 
@@ -67,7 +63,7 @@ The following features are available:
 | ----------------------------------------- | --------- | ----------------------------------------------------------------------------- | ---------------------------------------------------- |
 | **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                                       |                                                      |
 | **Permissions**                           | ✅         | Groups (static and dynamic), Licenses, Phone and Email authentication methods |                                                      |
-| **Resources**                             | ❌         | -                                                                             |                                                      |
+| **Resources**                             | ✅         | Groups                                                                        | Only available for groups                            |
 | **Uniqueness**                            | ✅         | -                                                                             |                                                      |
 | **Entitlement Import: Accounts**          | ✅         | -                                                                             |                                                      |
 | **Entitlement Import: Permissions**       | ✅         | Groups and Licenses                                                           | No import for Phone and Email authentication methods |
@@ -144,10 +140,10 @@ More info: [Configure a client app to access a web API](https://learn.microsoft.
 
 To authenticate with the Graph API, you’ll need credentials for your app. The recommended approach is to use a **Certificate**.
 
-1. **Get the certificate**
-  - Go to the app you registered in Microsoft Entra ID.
-  - Navigate to Client Credentials: Add a certificate or secret.
-  - Upload the public key file [.cer] file.
+**Get the certificate**
+1. Go to the app you registered in Microsoft Entra ID.
+2. Navigate to Client Credentials: Add a certificate or secret.
+3. Upload the public key file [.cer] file.
 
 More info: [Certificate](#certificate).
 
@@ -248,11 +244,6 @@ $createExoAccountSplatParams = @{
 }
 ```
 
-### updateManagerOnUpdate can be deleted
-
-The `updateManagerOnUpdate` switch can potentially be removed by simply checking the `managerId`. If it is not mapped in the update, we do not perform the action. This simplifies the process by eliminating the need for an explicit switch to control whether the manager update is applied.
-
-
 ### Governance Remarks
 The import and reconciliation features of HelloID can be fully utilized with the Microsoft Entra EXO connector. However, there is a small difference in how the Disable and Delete actions are handled. Actions triggered by reconciliation use hardcoded fields instead of the configured field mapping, because there is no person context available during reconciliation. This limitation applies only to reconciliation, not to enforcement.
 
@@ -261,14 +252,16 @@ The properties updated during Delete and Disable actions triggered by reconcilia
 - `accountEnabled = $false`
 - `HiddenFromAddressListsEnabled = $true`  *EXO only
 
-
 ### ExO PowerShell module
 
 Within HelloID, version _3.5.1_ of the Exchange Online module is being used. https://www.powershellgallery.com/packages/ExchangeOnlineManagement/3.5.1
 
+> [!NOTE]
+> This module is provided via the HelloID cloud agent with a limited set of available cmdlets.
+
 ### Connect-ManagedExchangeOnline
 
-The connector depends on the `Connect-ManagedExchangeOnline` cmdlet. Note that this cmdlet is __not available__ on your local machine.
+`Connect-ManagedExchangeOnline` is a custom cmdlet used to establish the connection to Exchange Online. This cmdlet is only available within the HelloID cloud agent environment.
 
 ### Script flow
 
@@ -317,13 +310,15 @@ Actions are executed in order:
 
 The following endpoints are used by the connector
 
-| Endpoint                                               | Description                     |
-| ------------------------------------------------------ | ------------------------------- |
-| /Users                                                 | handle user information         |
-| /Users/_$accountreference_/assignLicense               | Handle licenses information     |
-| /Users/_$accountreference_/authentication/phoneMethods | Handle phoneMethods information |
-| /Users/_$accountreference_/authentication/emailMethods | Handle emailMethods information |
-| /Groups                                                | Handle group information        |
+| Endpoint                   | Description                       |
+| -------------------------- | --------------------------------- |
+| /users                     | Handle user information           |
+| /users/{id}                | Get or update specific user       |
+| /users/{id}/assignLicense  | Handle licenses information       |
+| /users/{id}/authentication | Handle authentication method      |
+| /users/{id}/manager        | Get, set or remove user's manager |
+| /groups                    | Handle group information          |
+| /groups/{id}/members       | Get group members                 |
 
 ### ExO documentation
 
