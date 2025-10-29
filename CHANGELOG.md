@@ -3,7 +3,12 @@
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [1.2.2] - 28-10-2025
-- Fixed: Improved grant AuthenticationMethods scripts
+
+### Authentication methods
+- Fixed: Changed only boolean names back to onlySetMobileWhenEmpty and onlySetEmailWhenEmpty
+- Fixed: Changed a true/false bug in the processing logic of these booleans
+- Fixed: Changed dryRun and actionMessages so that the changed attribute value is shown
+- Fixed: Changed dryRun and actionMessages so it doesn't use the Permission.displayName as this doesn't work in the dryRun
 
 ## [1.2.1] - 14-10-2025
 
