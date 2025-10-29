@@ -1,6 +1,5 @@
 #################################################
-# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Permissions-Groups-Import
-# Correlate to permission
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-Permissions-Groups-Import
 # PowerShell V2
 #################################################
 
@@ -221,12 +220,12 @@ try {
         } while ($uri)
         $numberOfAccounts = $(($entraIDGroupMembers | Measure-Object).Count)   
 
-        # Make sure the displayname has a value of max 100 char
+        # Make sure the displayName has a value of max 100 char
         if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
-            $displayname = $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
+            $displayName = $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
         }
         else {
-            $displayname = $entraIDGroup.id
+            $displayName = $entraIDGroup.id
         }
         # Make sure the description has a value of max 100 char
         if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {

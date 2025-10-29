@@ -1,7 +1,18 @@
-#######################################################################
-# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Permissions-Groups-Import
+#################################################
+# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-SubPermissionsImport-Groups
+# Import sub permissions
 # PowerShell V2
-#######################################################################
+#################################################
+
+# Configure, must be the same as the values used in retrieve permissions
+$permissionReference = 'dep'
+$permissionDisplayName = 'Department'
+
+# Make sure the search query returns the same scope as the 'Handle all action script'. If this is not possible with GraphApi, then filter the data after retrieving it.
+# Example using department_<departmentName>=
+$searchQuery = "`$filter=startswith(displayName,'department')"
+# Example when using function_<functionName>_department_<departmentName>:
+# $searchQuery = '$search="displayName:function_department"'
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -145,6 +156,7 @@ function Get-MSEntraCertificate {
 }
 #endregion functions
 
+
 try {
     # Setup Connection with Entra/Exo
     $actionMessage = 'connecting to MS-Entra'
@@ -158,14 +170,12 @@ try {
     # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
     $headers.Add('ConsistencyLevel', 'eventual')
 
+    # # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying groups"
     $entraIDGroups = @()
-
-    # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying M365 groups"
-    $entraIDGroupsM365Groups = @()
-    $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,onPremisesSyncEnabled,groupTypes&`$top=999&`$count=true"
+    $uri = "https://graph.microsoft.com/v1.0/groups?$searchQuery"
     do {
-        $getM365GroupsSplatParams = @{
+        $getGroupsSplatParams = @{
             Uri         = $uri
             Headers     = $headers
             Method      = 'GET'
@@ -173,35 +183,14 @@ try {
             Verbose     = $false
             ErrorAction = "Stop"
         }
-        $response = Invoke-RestMethod @getM365GroupsSplatParams
-        $entraIDGroupsM365Groups += $response.value
-        Write-Information "Successfully queried [$($entraIDGroupsM365Groups.count)] existing M365 groups"
+        $response = Invoke-RestMethod @getGroupsSplatParams
+        $entraIDGroups += $response.value
+        Write-Information "Successfully queried [$($entraIDGroups.count)] existing groups"
         $uri = $response.'@odata.nextLink'
     } while ($uri)
-    $entraIDGroups += $entraIDGroupsM365Groups
 
-    # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying security groups"
-    $entraIDGroupsSecurityGroups = @()
-    $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true&`$select=id,displayName,description,onPremisesSyncEnabled,groupTypes&`$top=999&`$count=true"
-    do {
-        $getSecurityGroupsSplatParams = @{
-            Uri         = $uri
-            Headers     = $headers
-            Method      = 'GET'
-            ContentType = 'application/json; charset=utf-8'
-            Verbose     = $false
-            ErrorAction = "Stop"
-        }
-        $response = Invoke-RestMethod @getSecurityGroupsSplatParams
-        $entraIDGroupsSecurityGroups += $response.value
-        Write-Information "Successfully queried [$($entraIDGroupsSecurityGroups.count)] existing security groups"
-        $uri = $response.'@odata.nextLink'
-    } while ($uri)
-    $entraIDGroups += $entraIDGroupsSecurityGroups
-
-    $actionMessage = "querying Entra ID Group Members"
-    foreach ($entraIDGroup in $entraIDGroups) {
+    $actionMessage = "querying group members"
+    foreach ($entraIDGroup in $entraIDGroups) {  
         $entraIDGroupMembers = @()
         $uri = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members?`$select=id"
         do {
@@ -218,32 +207,28 @@ try {
             $entraIDGroupMembers += $users
             $uri = $response.'@odata.nextLink'
         } while ($uri)
-        $numberOfAccounts = $(($entraIDGroupMembers | Measure-Object).Count)
+        $numberOfAccounts = $(($entraIDGroupMembers | Measure-Object).Count)   
 
-        # Make sure the displayname has a value of max 100 char
+        # Make sure the displayName has a value of max 100 char
         if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
-            $displayname = $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
+            $displayName = $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
         }
         else {
-            $displayname = $entraIDGroup.id
-        }
-        # Make sure the description has a value of max 100 char
-        if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
-            $description = $($entraIDGroup.description).substring(0, [System.Math]::Min(100, $($entraIDGroup.description).Length))
-        }
-        else {
-            $description = $null
+            $displayName = $entraIDGroup.id
         }
 
         $permission = @{
-            PermissionReference = @{
+            PermissionReference      = @{
+                Reference = $permissionReference
+            }       
+            DisplayName              = "Permission - $permissionDisplayName"
+            SubPermissionReference   = @{
                 Id = $entraIDGroup.id
             }
-            Description         = $description
-            DisplayName         = $displayName
+            SubPermissionDisplayName = $displayName
         }
 
-        # Batch permissions based on the amount of account references,
+        # Batch permissions based on the amount of account references, 
         # to make sure the output objects are not above the limit
         $accountsBatchSize = 500
         if ($numberOfAccounts -gt 0) {
