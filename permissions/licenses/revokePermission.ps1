@@ -195,23 +195,23 @@ try {
     switch ($action) {
         'RevokePermission' {
             # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
-            $actionMessage = "revoking license [$($actionContext.References.Permission.Reference)] with skuid [$($actionContext.References.Permission.Reference)] from account"
+            $actionMessage = "revoking license [$($actionContext.References.Permission.Id)] with skuid [$($actionContext.References.Permission.Id)] from account"
             $revokePermissionSplatParams = @{
                 Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/assignLicense"
                 Headers = $headers
                 Method  = "POST"
                 Body    = [ordered]@{
                     addLicenses    = @()
-                    removeLicenses = @($($actionContext.References.Permission.Reference))
+                    removeLicenses = @($($actionContext.References.Permission.Id))
                 } | ConvertTo-Json
                 Verbose = $false
             }
             if (-not($actionContext.DryRun -eq $true)) {
-                Write-Information "Revoking MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
+                Write-Information "Revoking MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)]"
                 $revokedPermission = Invoke-RestMethod @revokePermissionSplatParams
             }
             else {
-                Write-Information "[DryRun] Revoke MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "[DryRun] Revoke MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true

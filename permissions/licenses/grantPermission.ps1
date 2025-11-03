@@ -195,19 +195,19 @@ try {
     switch ($action) {
         'GrantPermission' {
             # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0&tabs=http
-            $actionMessage = "granting license [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.Reference)] to account"
+            $actionMessage = "granting license [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.Id)] to account"
             $grantPermissionSplatParams = @{
                 Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/assignLicense"
                 Headers = $headers
                 Method  = 'POST'
                 Body    = [ordered]@{
-                    addLicenses    = @(@{skuId = $($actionContext.References.Permission.Reference) })
+                    addLicenses    = @(@{skuId = $($actionContext.References.Permission.Id) })
                     removeLicenses = @()
                 } | ConvertTo-Json -Depth 10
                 Verbose = $false
             }
             if (-not($actionContext.DryRun -eq $true)) {
-                Write-Information "Granting MS-Entra-Exo license: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
+                Write-Information "Granting MS-Entra-Exo license: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)]"
                 try {
                     $grantedPermission = Invoke-RestMethod @grantPermissionSplatParams
                 } catch {
@@ -217,7 +217,7 @@ try {
                 }
             }
             else {
-                Write-Information "[DryRun] Grant MS-Entra-Exo license: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "[DryRun] Grant MS-Entra-Exo license: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true

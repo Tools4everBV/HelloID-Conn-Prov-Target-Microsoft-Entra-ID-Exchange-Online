@@ -191,12 +191,12 @@ try {
     switch ($action) {
         'GrantPermission' {
             if (-not($actionContext.DryRun -eq $true)) {
-                $actionMessage = "Granting MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
+                $actionMessage = "Granting MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)]"
                 Write-Information = $actionMessage
 
                 # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
                 $splatGrantPermission = @{
-                    Uri     = "https://graph.microsoft.com/v1.0/groups/$($actionContext.References.Permission.Reference)/members/`$ref"
+                    Uri     = "https://graph.microsoft.com/v1.0/groups/$($actionContext.References.Permission.Id)/members/`$ref"
                     Headers = $headers
                     Method  = 'POST'
                     Verbose = $false
@@ -212,7 +212,7 @@ try {
                     }
                 }
             } else {
-                Write-Information "[DryRun] Grant MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "[DryRun] Grant MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true

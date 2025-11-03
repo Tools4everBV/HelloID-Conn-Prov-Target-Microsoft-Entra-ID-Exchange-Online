@@ -191,25 +191,25 @@ try {
     switch ($action) {
         'RevokePermission' {
             # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0&tabs=http
-            $actionMessage = "revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.Reference)] from account"
+            $actionMessage = "revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.Id)] from account"
 
             $baseUri = "https://graph.microsoft.com/"
             $revokePermissionSplatParams = @{
-                Uri         = "$($baseUri)/v1.0/groups/$($actionContext.References.Permission.Reference)/members/$($actionContext.References.Account)/`$ref"
+                Uri         = "$($baseUri)/v1.0/groups/$($actionContext.References.Permission.Id)/members/$($actionContext.References.Account)/`$ref"
                 Headers     = $headers
                 Method      = "DELETE"
                 Verbose     = $false
             }
             if (-not($actionContext.DryRun -eq $true)) {
-                Write-Information "Revoking MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)]"
+                Write-Information "Revoking MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)]"
                 $null = Invoke-RestMethod @revokePermissionSplatParams
             } else {
-                Write-Information "[DryRun] Revoke MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Reference)], will be executed during enforcement"
+                Write-Information "[DryRun] Revoke MS-Entra-Exo permission: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)], will be executed during enforcement"
             }
 
             $outputContext.Success = $true
             $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "Revoked group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.Reference)] from account with AccountReference: $($actionContext.References.Account)"
+                    Message = "Revoked group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.Id)] from account with AccountReference: $($actionContext.References.Account)"
                     IsError = $false
                 })
         }
