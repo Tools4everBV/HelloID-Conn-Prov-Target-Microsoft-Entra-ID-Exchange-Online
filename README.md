@@ -138,7 +138,7 @@ More info: [Configure a client app to access a web API](https://learn.microsoft.
 
 #### Authentication and Authorization
 
-To authenticate with the Graph API, you’ll need credentials for your app. The recommended approach is to use a **Certificate**.
+To authenticate with the Graph API, you’ll need credentials for your app. The required approach is to use a **Certificate**.
 
 **Get the certificate**
 1. Go to the app you registered in Microsoft Entra ID.
