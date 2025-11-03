@@ -180,7 +180,7 @@
                         "Update"
                     ],
                     "MappingMode": "Complex",
-                    "Value": "\"// Mapping logic to generate the BusinessPhones as a string collection.\\r\\nfunction generateBusinessPhones() {\\r\\n    let businessPhones = [];\\r\\n    Person.Contact.Business.Phone.Fixed = '022912345678'\\r\\n    if (typeof Person.Contact.Business.Phone.Fixed !== 'undefined' && Person.Contact.Business.Phone.Fixed) {\\r\\n        businessPhones = [Person.Contact.Business.Phone.Fixed];\\r\\n    }\\r\\n\\r\\n    return businessPhones;\\r\\n}\\r\\n\\r\\ngenerateBusinessPhones();\"",
+                    "Value": "\"// Mapping logic to generate the BusinessPhones as a string collection.\\r\\nfunction generateBusinessPhones() {\\r\\n    let businessPhones = [];\\r\\n    if (typeof Person.Contact.Business.Phone.Fixed !== 'undefined' && Person.Contact.Business.Phone.Fixed) {\\r\\n        businessPhones = [Person.Contact.Business.Phone.Fixed];\\r\\n    }\\r\\n\\r\\n    return businessPhones;\\r\\n}\\r\\n\\r\\ngenerateBusinessPhones();\"",
                     "UsedInNotifications": false,
                     "StoreInAccountData": false
                 }
