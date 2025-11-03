@@ -353,6 +353,9 @@ try {
                     $createdAccountEntra = Invoke-RestMethod @splatCreateParams
                     $outputContext.Data = $createdAccountEntra
                     $outputContext.AccountReference = $createdAccountEntra.Id
+                    if ($actionContext.Data.PSObject.Properties.Name -contains 'passwordProfile' -and $actionContext.Data.passwordProfile.PSObject.Properties.Name -contains 'password' ) {
+                        $outputContext.Data | Add-Member @{passwordProfile = @{password = $actionContext.Data.passwordProfile.password } } -Force
+                    }
                 } else {
                     Write-Information '[DryRun] Create and correlate MS-Entra-Exo account, will be executed during enforcement'
                 }
