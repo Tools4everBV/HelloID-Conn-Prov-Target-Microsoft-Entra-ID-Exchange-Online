@@ -158,103 +158,125 @@ try {
     # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
     $headers.Add('ConsistencyLevel', 'eventual')
 
-    $entraIDGroups = @()
-
     # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying M365 groups"
-    $entraIDGroupsM365Groups = @()
-    $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,onPremisesSyncEnabled,groupTypes&`$top=999&`$count=true"
+    $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,description"
     do {
         $getM365GroupsSplatParams = @{
-            Uri         = $uri
+            Uri         = $uriGroups
             Headers     = $headers
             Method      = 'GET'
             ContentType = 'application/json; charset=utf-8'
             Verbose     = $false
             ErrorAction = "Stop"
         }
-        $response = Invoke-RestMethod @getM365GroupsSplatParams
-        $entraIDGroupsM365Groups += $response.value
-        Write-Information "Successfully queried [$($entraIDGroupsM365Groups.count)] existing M365 groups"
-        $uri = $response.'@odata.nextLink'
-    } while ($uri)
-    $entraIDGroups += $entraIDGroupsM365Groups
+        $m365GroupsResponse = Invoke-RestMethod @getM365GroupsSplatParams
+        foreach ($entraIDGroup in $m365GroupsResponse.value) {
+            $actionMessage = "querying M365 group members"
+            # Make sure the displayName has a value of max 100 char
+            if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
+                $displayName = 'M365 Group - ' + $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
+            }
+            else {
+                $displayName = 'M365 Group - ' + $entraIDGroup.id
+            }
+            # Make sure the description has a value of max 100 char
+            if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
+                $description = $($entraIDGroup.description).substring(0, [System.Math]::Min(100, $($entraIDGroup.description).Length))
+            }
+            else {
+                $description = $null
+            }
+
+            $uriMembers = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members/microsoft.graph.user?`$select=id&`$count=true"
+            do {
+                $getM365GroupMembershipsSplatParams = @{
+                    Uri         = $uriMembers
+                    Headers     = $headers
+                    Method      = 'GET'
+                    ContentType = 'application/json; charset=utf-8'
+                    Verbose     = $false
+                    ErrorAction = "Stop"
+                }
+                $groupMembersResponse = Invoke-RestMethod @getM365GroupMembershipsSplatParams
+
+                if ($groupMembersResponse.'@odata.count' -gt 0) {
+                    Write-Output @(
+                        @{
+                            AccountReferences   = @( $groupMembersResponse.value.id ) # Graph will return a maximum of 100 records by default
+                            PermissionReference = @{ Id = $entraIDGroup.id }                        
+                            Description         = $description
+                            DisplayName         = $displayName
+                        }
+                    )
+                }
+                $uriMembers = $groupMembersResponse.'@odata.nextLink'
+            } while ($uriMembers)
+            $m365GroupCount++
+        }
+        $uriGroups = $m365GroupsResponse.'@odata.nextLink'
+    } while ($uriGroups)
+    Write-Information "Successfully queried [$m365GroupCount] existing m365 groups"
 
     # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying security groups"
-    $entraIDGroupsSecurityGroups = @()
-    $uri = "https://graph.microsoft.com/v1.0/groups?`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true&`$select=id,displayName,description,onPremisesSyncEnabled,groupTypes&`$top=999&`$count=true"
+    $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true&`$select=id,displayName,description"
     do {
         $getSecurityGroupsSplatParams = @{
-            Uri         = $uri
+            Uri         = $uriGroups
             Headers     = $headers
             Method      = 'GET'
             ContentType = 'application/json; charset=utf-8'
             Verbose     = $false
             ErrorAction = "Stop"
         }
-        $response = Invoke-RestMethod @getSecurityGroupsSplatParams
-        $entraIDGroupsSecurityGroups += $response.value
-        Write-Information "Successfully queried [$($entraIDGroupsSecurityGroups.count)] existing security groups"
-        $uri = $response.'@odata.nextLink'
-    } while ($uri)
-    $entraIDGroups += $entraIDGroupsSecurityGroups
-
-    $actionMessage = "querying Entra ID Group Members"
-    foreach ($entraIDGroup in $entraIDGroups) {  
-        $entraIDGroupMembers = @()
-        $uri = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members?`$select=id"
-        do {
-            $getMembershipsSplatParams = @{
-                Uri         = $uri
-                Headers     = $headers
-                Method      = 'GET'
-                ContentType = 'application/json; charset=utf-8'
-                Verbose     = $false
-                ErrorAction = "Stop"
+        $securityGroupsResponse = Invoke-RestMethod @getSecurityGroupsSplatParams
+        foreach ($entraIDGroup in $securityGroupsResponse.value) {
+            $actionMessage = "querying security group members"
+            # Make sure the displayName has a value of max 100 char
+            if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
+                $displayName = 'Security Group - ' + $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
             }
-            $response = Invoke-RestMethod @getMembershipsSplatParams
-            $users = $response.value | Where-Object { $_.'@odata.type' -eq "#microsoft.graph.user" }
-            $entraIDGroupMembers += $users
-            $uri = $response.'@odata.nextLink'
-        } while ($uri)
-        $numberOfAccounts = $(($entraIDGroupMembers | Measure-Object).Count)   
-
-        # Make sure the displayName has a value of max 100 char
-        if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
-            $displayName = $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
-        }
-        else {
-            $displayName = $entraIDGroup.id
-        }
-        # Make sure the description has a value of max 100 char
-        if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
-            $description = $($entraIDGroup.description).substring(0, [System.Math]::Min(100, $($entraIDGroup.description).Length))
-        }
-        else {
-            $description = $null
-        }
-
-        $permission = @{
-            PermissionReference = @{
-                Id = $entraIDGroup.id
-            }       
-            Description         = $description
-            DisplayName         = $displayName
-        }
-
-        # Batch permissions based on the amount of account references, 
-        # to make sure the output objects are not above the limit
-        $accountsBatchSize = 500
-        if ($numberOfAccounts -gt 0) {
-            $accountsBatchSize = 500
-            $batches = 0..($numberOfAccounts - 1) | Group-Object { [math]::Floor($_ / $accountsBatchSize ) }
-            foreach ($batch in $batches) {
-                $permission.AccountReferences = [array]($batch.Group | ForEach-Object { @($entraIDGroupMembers[$_].id) })
-                Write-Output $permission
+            else {
+                $displayName = 'Security Group - ' + $entraIDGroup.id
             }
+            # Make sure the description has a value of max 100 char
+            if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
+                $description = $($entraIDGroup.description).substring(0, [System.Math]::Min(100, $($entraIDGroup.description).Length))
+            }
+            else {
+                $description = $null
+            }
+
+            $uriMembers = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members/microsoft.graph.user?`$select=id&`$count=true"
+            do {
+                $getSecurityGroupMembershipsSplatParams = @{
+                    Uri         = $uriMembers
+                    Headers     = $headers
+                    Method      = 'GET'
+                    ContentType = 'application/json; charset=utf-8'
+                    Verbose     = $false
+                    ErrorAction = "Stop"
+                }
+                $groupMembersResponse = Invoke-RestMethod @getSecurityGroupMembershipsSplatParams
+
+                if ($groupMembersResponse.'@odata.count' -gt 0) {
+                    Write-Output @(
+                        @{
+                            AccountReferences   = @( $groupMembersResponse.value.id ) # Graph will return a maximum of 100 records by default
+                            PermissionReference = @{ Id = $entraIDGroup.id }                        
+                            Description         = $description
+                            DisplayName         = $displayName
+                        }
+                    )
+                }
+                $uriMembers = $groupMembersResponse.'@odata.nextLink'
+            } while ($uriMembers)
+            $securityGroupCount++
         }
-    }
+        $uriGroups = $securityGroupsResponse.'@odata.nextLink'
+    } while ($uriGroups)
+    Write-Information "Successfully queried [$securityGroupCount] existing security groups"
 }
 catch {
     $ex = $PSItem
