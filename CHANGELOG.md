@@ -3,15 +3,29 @@
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
 ## [1.2.3] - 29-10-2025
+### Updated
+- Field mapping logic for `mail`, `mailNickname`, `userPrincipalName`, and `exchangeOnline.EmailAddresses` updated to follow best practices for naming conventions, uniqueness, and attribute length limits.
+
+### Added
+- Project logo/icon added to the README for improved visual identification.
 
 ### Changed
 - Expanded and improved documentation in the README, including:
-	- Clearer explanation of group-based licensing.
-	- Addition and clarification of used Graph API endpoints.
-	- Extended explanation about the custom cmdlet `Connect-ManagedExchangeOnline` and the HelloID cloud agent.
-	- Various textual and structural improvements.
+  - Clearer explanation of group-based licensing.
+  - Addition and clarification of used Graph API endpoints.
+  - Extended explanation about the custom cmdlet `Connect-ManagedExchangeOnline` and the HelloID cloud agent.
+  - Various textual and structural improvements.
+- Feature table updated: "Resources: Groups" now marked as supported.
+- Consistent use of `.Id` instead of `.Reference` for permission identifiers in all permission scripts (groups and licenses).
+- Improved output formatting and handling of display names and descriptions in group and license import scripts.
+- More robust logic for batching and reporting group and license members.
+- Clarified and corrected endpoint documentation in README.
+- README: clarified that `Connect-ManagedExchangeOnline` is only available in the HelloID cloud agent environment.
+- Minor textual corrections in README and script comments.
 - Minor corrections and additions in the changelog and feature table.
-- Fixed: Multiple small fixes in the import scripts
+
+### Fixed
+- Multiple small fixes in the import scripts for permissions (groups and licenses).
 
 ## [1.2.2] - 28-10-2025
 
