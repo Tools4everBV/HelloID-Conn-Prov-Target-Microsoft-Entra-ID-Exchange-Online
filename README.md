@@ -1,4 +1,4 @@
-# HelloID-Conn-Prov-Target-MS-Entra-Exo
+# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online
 
 > [!IMPORTANT]
 > This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.
@@ -9,7 +9,7 @@
 
 ## Table of contents
 
-- [HelloID-Conn-Prov-Target-MS-Entra-Exo](#helloid-conn-prov-target-ms-entra-exo)
+- [HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online](#helloid-conn-prov-target-microsoft-entra-id-exchange-online)
   - [Table of contents](#table-of-contents)
   - [Introduction](#introduction)
   - [Supported  features](#supported--features)
@@ -44,9 +44,9 @@
 
 ## Introduction
 
-_HelloID-Conn-Prov-Target-MS-Entra-Exo_ is a _target_ connector. _MS-Entra-Exo_ provides a set of REST API's that allow you to programmatically interact with its data.
+_HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online_ is a _target_ connector. _MS-Entra-Exo_ provides a set of REST API's that allow you to programmatically interact with its data.
 
-The _HelloID-Conn-Prov-Target-MS-Entra-Exo_ connector supports both _Microsoft Entra_ combined with _Microsoft Exchange Online_, as well as standalone _Microsoft Entra_ environments. Integration with _Exchange Online_ can be enabled via the configuration by toggling the `Exchange Online integration` option.
+The _HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online_ connector supports both _Microsoft Entra_ combined with _Microsoft Exchange Online_, as well as standalone _Microsoft Entra_ environments. Integration with _Exchange Online_ can be enabled via the configuration by toggling the `Exchange Online integration` option.
 
 [!NOTE]
 When using MS Exchange Online, please note that licensing must be configured separately, for example through group-based licensing (e.g., by assigning licenses via group memberships).
