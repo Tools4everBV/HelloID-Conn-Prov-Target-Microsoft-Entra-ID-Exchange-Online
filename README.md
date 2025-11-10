@@ -1,8 +1,5 @@
 # HelloID-Conn-Prov-Target-MS-Entra-Exo
 
-> [!WARNING]
-> The _HelloID-Conn-Prov-Target-MS-Entra-Exo_ is currently a __private__ repository because the _Microsoft Exchange Online_ functionality is controlled by a _feature flag_.  If you’d like to use this connector, please contact your account manager.
-
 > [!IMPORTANT]
 > This repository contains the connector and configuration code only. The implementer is responsible to acquire the connection details such as username, password, certificate, etc. You might even need to sign a contract or agreement with the supplier before implementing this connector. Please contact the client's application manager to coordinate the connector requirements.
 
@@ -17,13 +14,9 @@
   - [Introduction](#introduction)
   - [Supported  features](#supported--features)
   - [Getting started](#getting-started)
-    - [Prerequisites](#prerequisites)
-      - [App Registration](#app-registration)
-      - [Creating a new app registration](#creating-a-new-app-registration)
-      - [Configuring permissions](#configuring-permissions)
-        - [Exchange Permissions](#exchange-permissions)
-      - [Authentication and Authorization](#authentication-and-authorization)
-      - [Certificate](#certificate)
+    - [Requirements](#requirements)
+      - [App Registration \& Certificate Setup](#app-registration--certificate-setup)
+      - [HelloID-specific configuration](#helloid-specific-configuration)
     - [Connection settings](#connection-settings)
     - [Correlation configuration](#correlation-configuration)
     - [Field mapping](#field-mapping)
@@ -33,7 +26,6 @@
       - [properties without the exchangeOnline prefix](#properties-without-the-exchangeonline-prefix)
       - [Hardcoded boolean values](#hardcoded-boolean-values)
       - [Hardcoded mapping](#hardcoded-mapping)
-    - [updateManagerOnUpdate can be deleted](#updatemanageronupdate-can-be-deleted)
     - [Governance Remarks](#governance-remarks)
     - [ExO PowerShell module](#exo-powershell-module)
     - [Connect-ManagedExchangeOnline](#connect-managedexchangeonline)
@@ -56,8 +48,8 @@ _HelloID-Conn-Prov-Target-MS-Entra-Exo_ is a _target_ connector. _MS-Entra-Exo_ 
 
 The _HelloID-Conn-Prov-Target-MS-Entra-Exo_ connector supports both _Microsoft Entra_ combined with _Microsoft Exchange Online_, as well as standalone _Microsoft Entra_ environments. Integration with _Exchange Online_ can be enabled via the configuration by toggling the `Exchange Online integration` option.
 
-> [!NOTE]
-> When using _MS Exchange Online_, note that licensing must be configured separately, for example by using group memberships.
+[!NOTE]
+When using MS Exchange Online, please note that licensing must be configured separately, for example through group-based licensing (e.g., by assigning licenses via group memberships).
 
 ## Supported  features
 
@@ -67,7 +59,7 @@ The following features are available:
 | ----------------------------------------- | --------- | ----------------------------------------------------------------------------- | ---------------------------------------------------- |
 | **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                                       |                                                      |
 | **Permissions**                           | ✅         | Groups (static and dynamic), Licenses, Phone and Email authentication methods |                                                      |
-| **Resources**                             | ❌         | -                                                                             |                                                      |
+| **Resources**                             | ✅         | Groups                                                                        | Only available for groups                            |
 | **Uniqueness**                            | ✅         | -                                                                             |                                                      |
 | **Entitlement Import: Accounts**          | ✅         | -                                                                             |                                                      |
 | **Entitlement Import: Permissions**       | ✅         | Groups and Licenses                                                           | No import for Phone and Email authentication methods |
@@ -75,85 +67,34 @@ The following features are available:
 
 ## Getting started
 
-### Prerequisites
+### Requirements
 
-#### App Registration
+#### App Registration & Certificate Setup
 
-Before implementing this connector, make sure to configure a Microsoft Entra ID, an **App Registration**.
-During the setup process, you’ll create a new App Registration in the Azure portal, assign the necessary API permissions (such as user and group read/write), and generate credentials—either a client secret or a certificate. These credentials are then configured in HelloID to allow the connector to authenticate securely.
+Before implementing this connector, make sure to configure a Microsoft Entra ID, an App Registration. During the setup process, you’ll create a new App Registration in the Entra portal, assign the necessary API permissions (such as user and group read/write), and generate and assign a certificate.
 
-This step is essential for enabling HelloID to provision and manage accounts within your Microsoft 365 environment.
+Follow the official Microsoft documentation for creating an App Registration and setting up certificate-based authentication:
+- [App-only authentication with certificate (Exchange Online)](https://learn.microsoft.com/en-us/powershell/exchange/app-only-auth-powershell-v2?view=exchange-ps#set-up-app-only-authentication)
 
-#### Creating a new app registration
+#### HelloID-specific configuration
 
-1. **Navigate to App Registrations**:
-   - Open the [Microsoft Entra ID Portal](https://entra.microsoft.com/).
-   - Go to **Microsoft Entra ID** > **App registrations**.
-   - Click **New registration**.
+Once you have completed the Microsoft setup and followed their best practices, configure the following HelloID-specific requirements.
 
-2. **Register the Application**:
-   - **Name**: Choose a name (e.g., `HelloID PowerShell`).
-   - **Supported account types**: Select who can use the app (e.g., *Accounts in this organizational directory only*).
-   - **Redirect URI**: Choose `Web` and enter a URI (e.g., `http://localhost`).
-
-3. **Complete Registration**:
-   - Click **Register** to create the application.
-
-For more details, refer to the official guide: [Quickstart: Register an app](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app?tabs=certificate).
-
-#### Configuring permissions
-
-After registration, configure API permissions so the app can interact with Microsoft Graph on behalf of HelloID.
-
-1. Go to the app’s **API permissions** section.
-2. Click **Add a permission**.
-3. Choose **Microsoft Graph**.
-4. Select **Application permissions** and add:
-   - `User.ReadWrite.All`
-   - `Group.ReadWrite.All`
-   - `GroupMember.ReadWrite.All`
-   - `UserAuthenticationMethod.ReadWrite.All`
-   - `User.EnableDisableAccount.All`
-   - `User-PasswordProfile.ReadWrite.All`
-   - `User-Phone.ReadWrite.All`
-5. Click **Add permissions**.
-6. Click **Grant admin consent for [Your Tenant]** if required.
-
-More info: [Configure a client app to access a web API](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-configure-app-access-web-apis).
-
-##### Exchange Permissions
-**Assign API Permissions**
-1. Go to the app’s **API permissions** section.
-2. Click **Add a permission**.
-3. Choose **Microsoft Graph**.
-4. Select **Application permissions** and add:
-5. From the Request API Permissions screen, click **Office 365 Exchange Online**
-   - If "Office 365 Exchange Online" is not selectable, go to "APIs my organization uses" and search for "Office 365 Exchange Online".
-6. Select **Application permissions** and add.
-   - `Exchange.ManageAsApp`  
-7. Click **Add permissions**.   
-8. Click **Grant admin consent** for the selected permissions (requires admin privileges).
-
-**Assign Entra ID Roles to the Application**
-1. Go to the EntraID **Roles and administrators** section.
-2. Search and click the **Exchange Recipient Administrator** role.
-3. Choose **Add Assignments**.
-4. Search for the created app registration and click **Add**. 
-
-#### Authentication and Authorization
-
-To authenticate with the Graph API, you’ll need credentials for your app. The recommended approach is to use a **Certificate**.
-
-1. **Get the certificate**
-  - Go to the app you registered in Microsoft Entra ID.
-  - Navigate to Client Credentials: Add a certificate or secret.
-  - Upload the public key file [.cer] file.
-
-More info: [Certificate](#certificate).
-
-#### Certificate
-
-A certificate is required to establish a secure connection to both Microsoft Graph and Exchange Online. A comprehensive guide on how to create a certificate and extract the _Base64_ key is available on our [forum](https://forum.helloid.com/forum/helloid-provisioning/5338-instruction-setting-up-a-certificate-for-microsoft-graph-api-in-helloid-connectors#post5338).
+- **API Permissions** (Application permissions):
+  - `User.ReadWrite.All`
+  - `Group.ReadWrite.All`
+  - `GroupMember.ReadWrite.All`
+  - `UserAuthenticationMethod.ReadWrite.All`
+  - `User.EnableDisableAccount.All`
+  - `User-PasswordProfile.ReadWrite.All`
+  - `User-Phone.ReadWrite.All`
+- **Exchange Online permissions:**
+  - `Exchange.ManageAsApp` (Office 365 Exchange Online)
+- **Entra ID Role assignment:**
+  - Assign the **Exchange Recipient Administrator** role to the App Registration
+- **Certificate:**
+  - Upload the public key file (.cer) in Entra ID
+  - Provide the certificate as a Base64 string in HelloID. For instructions on creating the certificate and obtaining the base64 string, refer to our forum post: [Setting up a certificate for Microsoft Graph API in HelloID connectors](https://forum.helloid.com/forum/helloid-provisioning/5338-instruction-setting-up-a-certificate-for-microsoft-graph-api-in-helloid-connectors#post5338)
 
 ### Connection settings
 
@@ -248,11 +189,6 @@ $createExoAccountSplatParams = @{
 }
 ```
 
-### updateManagerOnUpdate can be deleted
-
-The `updateManagerOnUpdate` switch can potentially be removed by simply checking the `managerId`. If it is not mapped in the update, we do not perform the action. This simplifies the process by eliminating the need for an explicit switch to control whether the manager update is applied.
-
-
 ### Governance Remarks
 The import and reconciliation features of HelloID can be fully utilized with the Microsoft Entra EXO connector. However, there is a small difference in how the Disable and Delete actions are handled. Actions triggered by reconciliation use hardcoded fields instead of the configured field mapping, because there is no person context available during reconciliation. This limitation applies only to reconciliation, not to enforcement.
 
@@ -261,14 +197,16 @@ The properties updated during Delete and Disable actions triggered by reconcilia
 - `accountEnabled = $false`
 - `HiddenFromAddressListsEnabled = $true`  *EXO only
 
-
 ### ExO PowerShell module
 
 Within HelloID, version _3.5.1_ of the Exchange Online module is being used. https://www.powershellgallery.com/packages/ExchangeOnlineManagement/3.5.1
 
+> [!NOTE]
+> This module is provided via the HelloID cloud agent with a limited set of available cmdlets.
+
 ### Connect-ManagedExchangeOnline
 
-The connector depends on the `Connect-ManagedExchangeOnline` cmdlet. Note that this cmdlet is __not available__ on your local machine.
+`Connect-ManagedExchangeOnline` is a custom cmdlet used to establish the connection to Exchange Online. This cmdlet is only available within the HelloID cloud agent environment.
 
 ### Script flow
 
@@ -317,13 +255,15 @@ Actions are executed in order:
 
 The following endpoints are used by the connector
 
-| Endpoint                                               | Description                     |
-| ------------------------------------------------------ | ------------------------------- |
-| /Users                                                 | handle user information         |
-| /Users/_$accountreference_/assignLicense               | Handle licenses information     |
-| /Users/_$accountreference_/authentication/phoneMethods | Handle phoneMethods information |
-| /Users/_$accountreference_/authentication/emailMethods | Handle emailMethods information |
-| /Groups                                                | Handle group information        |
+| Endpoint                   | Description                       |
+| -------------------------- | --------------------------------- |
+| /users                     | Handle user information           |
+| /users/{id}                | Get or update specific user       |
+| /users/{id}/assignLicense  | Handle licenses information       |
+| /users/{id}/authentication | Handle authentication method      |
+| /users/{id}/manager        | Get, set or remove user's manager |
+| /groups                    | Handle group information          |
+| /groups/{id}/members       | Get group members                 |
 
 ### ExO documentation
 

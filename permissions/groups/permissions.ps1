@@ -180,7 +180,7 @@ try {
             @{
                 DisplayName    = $displayName
                 Identification = @{
-                    Reference = $permission.id
+                    Id = $permission.id
                 }
             }
         )
@@ -212,7 +212,7 @@ try {
                 @{
                     displayName    = $displayName
                     identification = @{
-                        Reference = $permission.id
+                        Id = $permission.id
                     }
                 }
             )

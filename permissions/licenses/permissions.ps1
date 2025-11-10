@@ -190,7 +190,7 @@ try {
                 @{
                     displayName    = $displayName
                     identification = @{
-                        Reference = $_.skuId
+                        Id = $_.skuId
                     }
                 }
             )

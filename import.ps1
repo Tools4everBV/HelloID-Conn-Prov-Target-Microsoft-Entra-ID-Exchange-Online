@@ -197,19 +197,22 @@ try {
     # Map the imported data to the account field mappings
     foreach ($account in $existingAccounts) {
         # Make sure the DisplayName has a value
-        if ([string]::IsNullOrEmpty($account.displayName)) {
-            $account.displayName = $account.id
+        $displayName = $account.displayName
+        if ([string]::IsNullOrEmpty($displayName)) {
+            $displayName = $account.id
         }
         # Make sure the Username has a value
-        if ([string]::IsNullOrEmpty($account.userPrincipalName)) {
-            $account.userPrincipalName = $account.id
+        $userName = $account.userPrincipalName
+        if ([string]::IsNullOrEmpty($userName)) {
+            $userName = $account.id
         }
         # Return the result
         Write-Output @{
             AccountReference = $account.id
-            DisplayName      = $account.displayName
-            UserName         = $account.userPrincipalName
+            DisplayName      = $displayName
+            UserName         = $userName
             Enabled          = $account.accountEnabled
+            # Enabled          = $false # When using correlate only, no account access is granted. This should be false for the import report.
             Data             = $account
         }
     }

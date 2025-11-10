@@ -1,7 +1,18 @@
-#######################################################################
-# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Permissions-Licenses-Import
+#################################################
+# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-SubPermissionsImport-Groups
+# Import sub permissions
 # PowerShell V2
-#######################################################################
+#################################################
+
+# Configure, must be the same as the values used in retrieve permissions
+$permissionReference = 'dep'
+$permissionDisplayName = 'Department'
+
+# Make sure the search query returns the same scope as the 'Handle all action script'. If this is not possible with GraphApi, then filter the data after retrieving it.
+# Example using department_<departmentName>=
+$searchQuery = "`$filter=startswith(displayName,'department')"
+# Example when using function_<functionName>_department_<departmentName>:
+# $searchQuery = '$search="displayName:function_department"'
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -145,6 +156,7 @@ function Get-MSEntraCertificate {
 }
 #endregion functions
 
+
 try {
     # Setup Connection with Entra/Exo
     $actionMessage = 'connecting to MS-Entra'
@@ -158,61 +170,72 @@ try {
     # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
     $headers.Add('ConsistencyLevel', 'eventual')
 
-    $actionMessage = "querying Microsoft Entra ID Licenses"
-    $microsoftEntraIDLicenses = [System.Collections.ArrayList]@()
+    # # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying groups"
+    $entraIDGroups = @()
+    $uri = "https://graph.microsoft.com/v1.0/groups?$searchQuery"
     do {
-        $baseUri = "https://graph.microsoft.com/"
-        $getMicrosoftEntraIDLicensesSplatParams = @{
-            Uri         = "$($baseUri)/v1.0/subscribedSkus"
+        $getGroupsSplatParams = @{
+            Uri         = $uri
             Headers     = $headers
             Method      = 'GET'
+            ContentType = 'application/json; charset=utf-8'
             Verbose     = $false
+            ErrorAction = "Stop"
         }
-        if (-not[string]::IsNullOrEmpty($getMicrosoftEntraIDLicensesResult.'@odata.nextLink')) {
-            $getMicrosoftEntraIDLicensesSplatParams["Uri"] = $getMicrosoftEntraIDLicensesResult.'@odata.nextLink'
-        }
-        $getMicrosoftEntraIDLicensesResult = Invoke-RestMethod @getMicrosoftEntraIDLicensesSplatParams
+        $response = Invoke-RestMethod @getGroupsSplatParams
+        $entraIDGroups += $response.value
+        Write-Information "Successfully queried [$($entraIDGroups.count)] existing groups"
+        $uri = $response.'@odata.nextLink'
+    } while ($uri)
 
-        if ($getMicrosoftEntraIDLicensesResult.Value -is [array]) {
-            [void]$microsoftEntraIDLicenses.AddRange($getMicrosoftEntraIDLicensesResult.Value)
+    $actionMessage = "querying group members"
+    foreach ($entraIDGroup in $entraIDGroups) {  
+        $entraIDGroupMembers = @()
+        $uri = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members?`$select=id"
+        do {
+            $getMembershipsSplatParams = @{
+                Uri         = $uri
+                Headers     = $headers
+                Method      = 'GET'
+                ContentType = 'application/json; charset=utf-8'
+                Verbose     = $false
+                ErrorAction = "Stop"
+            }
+            $response = Invoke-RestMethod @getMembershipsSplatParams
+            $users = $response.value | Where-Object { $_.'@odata.type' -eq "#microsoft.graph.user" }
+            $entraIDGroupMembers += $users
+            $uri = $response.'@odata.nextLink'
+        } while ($uri)
+        $numberOfAccounts = $(($entraIDGroupMembers | Measure-Object).Count)   
+
+        # Make sure the displayName has a value of max 100 char
+        if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
+            $displayName = $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
         }
         else {
-            [void]$microsoftEntraIDLicenses.Add($getMicrosoftEntraIDLicensesResult.Value)
+            $displayName = $entraIDGroup.id
         }
-    } while (-not[string]::IsNullOrEmpty($getMicrosoftEntraIDLicensesResult.'@odata.nextLink'))
-
-    $actionMessage = "querying Entra ID license Members"
-    foreach ($entraLicense in $microsoftEntraIDLicenses) {
-        $skuId = $entraLicense.skuId
-        $skuName = $entraLicense.skuPartNumber
 
         $permission = @{
-            PermissionReference = @{
-                Id = $skuId
+            PermissionReference      = @{
+                Reference = $permissionReference
+            }       
+            DisplayName              = "Permission - $permissionDisplayName"
+            SubPermissionReference   = @{
+                Id = $entraIDGroup.id
             }
-            Description         = $skuName
-            DisplayName         = $skuName
+            SubPermissionDisplayName = $displayName
         }
 
-        # Get users assigned this SKU
-        $users = @()
-        $url = "https://graph.microsoft.com/v1.0/users`?$filter=assignedLicenses/any(x:x/skuId eq $skuId)"
-
-        do {
-            $response = Invoke-RestMethod -Method Get -Uri $url -Headers $headers
-            $users += $response.value
-            $url = $response.'@odata.nextLink'
-        } while ($url)
-        $numberOfAccounts = $(($users | Measure-Object).Count)
-
-        # Batch permissions based on the amount of account references,
+        # Batch permissions based on the amount of account references, 
         # to make sure the output objects are not above the limit
         $accountsBatchSize = 500
         if ($numberOfAccounts -gt 0) {
             $accountsBatchSize = 500
             $batches = 0..($numberOfAccounts - 1) | Group-Object { [math]::Floor($_ / $accountsBatchSize ) }
             foreach ($batch in $batches) {
-                $permission.AccountReferences = [array]($batch.Group | ForEach-Object { @($users[$_].id) })
+                $permission.AccountReferences = [array]($batch.Group | ForEach-Object { @($entraIDGroupMembers[$_].id) })
                 Write-Output $permission
             }
         }
