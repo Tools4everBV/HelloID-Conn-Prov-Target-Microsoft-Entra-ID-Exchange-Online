@@ -2,12 +2,12 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
-## [1.2.4] - 12-11-2025
+## [2.0.1] - 12-11-2025
 ### Updated
  - Update configuration placeholders to use empty GUIDs instead of fake GUIDs.
 
 
-## [1.2.3] - 29-10-2025
+## [2.0.0] - 29-10-2025
 ### Updated
 - Field mapping logic for `mail`, `mailNickname`, `userPrincipalName`, and `exchangeOnline.EmailAddresses` updated to follow best practices for naming conventions, uniqueness, and attribute length limits.
 
