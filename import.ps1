@@ -177,7 +177,6 @@ try {
 
     # API docs: https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying accounts"
-    $existingAccounts = @()
     $uri = "https://graph.microsoft.com/v1.0/users?`$select=$fields"
     do {
         $getAccountsSplatParams = @{
@@ -188,35 +187,36 @@ try {
             Verbose     = $false
             ErrorAction = "Stop"
         }
-        $response = Invoke-RestMethod @getAccountsSplatParams
-        $existingAccounts += $response.value
-        Write-Information "Successfully queried [$($existingAccounts.count)] existing accounts"
-        $uri = $response.'@odata.nextLink'
+        $existingAccounts = Invoke-RestMethod @getAccountsSplatParams
+        foreach ($account in $existingAccounts) {
+            # Make sure the DisplayName has a value
+            if (-not([string]::IsNullOrEmpty($account.displayName))) {
+                $displayName = $($account.displayName).substring(0, [System.Math]::Min(100, $($account.displayName).Length))
+            }
+            else {
+                $displayName = $account.id
+            }
+            # Make sure the Username has a value
+            if (-not([string]::IsNullOrEmpty($account.userPrincipalName))) {
+                $userName = $($account.userPrincipalName).substring(0, [System.Math]::Min(100, $($account.userPrincipalName).Length))
+            }
+            else {
+                $userName = $account.id
+            }
+            # Return the result
+            Write-Output @{
+                AccountReference = $account.id
+                DisplayName      = $displayName
+                UserName         = $userName
+                Enabled          = $account.accountEnabled
+                # Enabled          = $false # When using correlate only, no account access is granted. This should be false for the import report.
+                Data             = $account
+            }
+            $accountCount++
+        }
+        $uri = $existingAccounts.'@odata.nextLink'
     } while ($uri)
-
-    # Map the imported data to the account field mappings
-    foreach ($account in $existingAccounts) {
-        # Make sure the DisplayName has a value
-        $displayName = $account.displayName
-        if ([string]::IsNullOrEmpty($displayName)) {
-            $displayName = $account.id
-        }
-        # Make sure the Username has a value
-        $userName = $account.userPrincipalName
-        if ([string]::IsNullOrEmpty($userName)) {
-            $userName = $account.id
-        }
-        # Return the result
-        Write-Output @{
-            AccountReference = $account.id
-            DisplayName      = $displayName
-            UserName         = $userName
-            Enabled          = $account.accountEnabled
-            # Enabled          = $false # When using correlate only, no account access is granted. This should be false for the import report.
-            Data             = $account
-        }
-    }
-    Write-Information 'Target account import completed'
+    Write-Information "Successfully queried [$accountCount] existing accounts"
 }
 catch {
     $ex = $PSItem

@@ -175,10 +175,11 @@ try {
             $actionMessage = "querying M365 group members"
             # Make sure the displayName has a value of max 100 char
             if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
-                $displayName = 'M365 Group - ' + $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
+                $displayName = "M365 Group - $($entraIDGroup.displayName)"
+                $displayName = $($displayName).substring(0, [System.Math]::Min(100, $($displayName).Length))
             }
             else {
-                $displayName = 'M365 Group - ' + $entraIDGroup.id
+                $displayName = "M365 Group - $($entraIDGroup.id)"
             }
             # Make sure the description has a value of max 100 char
             if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
@@ -235,10 +236,11 @@ try {
             $actionMessage = "querying security group members"
             # Make sure the displayName has a value of max 100 char
             if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
-                $displayName = 'Security Group - ' + $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
+                $displayName = "Security Group - $($entraIDGroup.displayName)"
+                $displayName = $($displayName).substring(0, [System.Math]::Min(100, $($displayName).Length))
             }
             else {
-                $displayName = 'Security Group - ' + $entraIDGroup.id
+                $displayName = "Security Group - $($entraIDGroup.id)"
             }
             # Make sure the description has a value of max 100 char
             if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
