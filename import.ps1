@@ -151,7 +151,9 @@ try {
 
     # Define properties to query
     $importFields = $($actionContext.ImportFields)
+    $importFields = $importFields | Where-Object { $_ -notlike 'exchangeonline.*' }
     $importFields = $importFields -replace '\..*', ''
+    $importFields = $importFields | Select-Object -Unique
 
     # Add mandatory fields for HelloID to query and return
     if ('id' -notin $importFields) { $importFields += 'id' }
