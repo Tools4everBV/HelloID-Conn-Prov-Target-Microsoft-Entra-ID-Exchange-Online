@@ -188,7 +188,7 @@ try {
             ErrorAction = "Stop"
         }
         $existingAccounts = Invoke-RestMethod @getAccountsSplatParams
-        foreach ($account in $existingAccounts) {
+        foreach ($account in $existingAccounts.value) {
             # Make sure the DisplayName has a value
             if (-not([string]::IsNullOrEmpty($account.displayName))) {
                 $displayName = $($account.displayName).substring(0, [System.Math]::Min(100, $($account.displayName).Length))
