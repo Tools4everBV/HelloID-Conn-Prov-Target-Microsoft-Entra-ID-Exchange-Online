@@ -225,27 +225,28 @@ try {
         }
     }
 } catch {
-    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-MS-Entra-ExoError -ErrorObject $ex
-        $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
-        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-
         if ($errorObj.ErrorDetails.error.code -eq "Request_ResourceNotFound" -and $errorObj.ErrorDetails.error.message -like "*$($actionContext.References.Permission.id)*") {
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    # Action  = "" # Optional
-                    Message = "Skipped revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already no longer a member or the group no longer exists."
-                    IsError = $false
-                })
+            $auditMessage = "Skipped revoking group [$($actionContext.PermissionDisplayName)] with id [$($actionContext.References.Permission.id)] from account with AccountReference: $($actionContext.References.Account | ConvertTo-Json). Reason: User is already no longer a member or the group no longer exists."
+            $auditError = $false
+            $outputContext.success = $true
+        } else {
+            $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
+            $auditError = $true
+            Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+            $outputContext.success = $false
         }
     } else {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
+        $auditError = $true
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        $outputContext.success = $false
     }
     $outputContext.AuditLogs.Add([PSCustomObject]@{
         Message = $auditMessage
-        IsError = $true
+        IsError = $auditError
     })
 }
