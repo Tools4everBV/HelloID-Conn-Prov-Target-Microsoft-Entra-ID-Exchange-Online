@@ -206,7 +206,7 @@ try {
                 if ($accountReferences.count -gt 0) {
                     Write-Output @(
                         @{
-                            AccountReferences   = @( $accountReferences ) # Graph will return a maximum of 100 records by default
+                            AccountReferences   = @( $accountReferences )
                             PermissionReference = @{ Id = $entraIDGroup.id }                        
                             Description         = $description
                             DisplayName         = $displayName
@@ -269,7 +269,7 @@ try {
                 if ($accountReferences.count -gt 0) {
                     Write-Output @(
                         @{
-                            AccountReferences   = @( $accountReferences ) # Graph will return a maximum of 100 records by default
+                            AccountReferences   = @( $accountReferences )
                             PermissionReference = @{ Id = $entraIDGroup.id }                        
                             Description         = $description
                             DisplayName         = $displayName
