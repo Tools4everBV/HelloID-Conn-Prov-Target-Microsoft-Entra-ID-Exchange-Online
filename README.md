@@ -48,8 +48,8 @@ _HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online_ is a _target_ conn
 
 The _HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online_ connector supports both _Microsoft Entra_ combined with _Microsoft Exchange Online_, as well as standalone _Microsoft Entra_ environments. Integration with _Exchange Online_ can be enabled via the configuration by toggling the `Exchange Online integration` option.
 
-[!NOTE]
-When using MS Exchange Online, please note that licensing must be configured separately, for example through group-based licensing (e.g., by assigning licenses via group memberships).
+> [!NOTE]
+> When using MS Exchange Online, please note that licensing must be configured separately, for example through group-based licensing (e.g., by assigning licenses via group memberships).
 
 ## Supported  features
 
