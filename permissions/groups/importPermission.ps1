@@ -160,7 +160,7 @@ try {
 
     # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying M365 groups"
-    $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,description"
+    $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,description&`$top=999"
     do {
         $getM365GroupsSplatParams = @{
             Uri         = $uriGroups
@@ -175,10 +175,11 @@ try {
             $actionMessage = "querying M365 group members"
             # Make sure the displayName has a value of max 100 char
             if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
-                $displayName = 'M365 Group - ' + $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
+                $displayName = "M365 Group - $($entraIDGroup.displayName)"
+                $displayName = $($displayName).substring(0, [System.Math]::Min(100, $($displayName).Length))
             }
             else {
-                $displayName = 'M365 Group - ' + $entraIDGroup.id
+                $displayName = "M365 Group - $($entraIDGroup.id)"
             }
             # Make sure the description has a value of max 100 char
             if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
@@ -188,7 +189,8 @@ try {
                 $description = $null
             }
 
-            $uriMembers = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members/microsoft.graph.user?`$select=id&`$count=true"
+            # Only top = 500 to maximize the amount of account references returned to HelloID
+            $uriMembers = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members/microsoft.graph.user?`$select=id&`$top=500"
             do {
                 $getM365GroupMembershipsSplatParams = @{
                     Uri         = $uriMembers
@@ -199,11 +201,12 @@ try {
                     ErrorAction = "Stop"
                 }
                 $groupMembersResponse = Invoke-RestMethod @getM365GroupMembershipsSplatParams
+                $accountReferences = $groupMembersResponse.value.id
 
-                if ($groupMembersResponse.'@odata.count' -gt 0) {
+                if ($accountReferences.count -gt 0) {
                     Write-Output @(
                         @{
-                            AccountReferences   = @( $groupMembersResponse.value.id ) # Graph will return a maximum of 100 records by default
+                            AccountReferences   = @( $accountReferences )
                             PermissionReference = @{ Id = $entraIDGroup.id }                        
                             Description         = $description
                             DisplayName         = $displayName
@@ -220,7 +223,7 @@ try {
 
     # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying security groups"
-    $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true&`$select=id,displayName,description"
+    $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true&`$select=id,displayName,description&`$top=999"
     do {
         $getSecurityGroupsSplatParams = @{
             Uri         = $uriGroups
@@ -235,10 +238,11 @@ try {
             $actionMessage = "querying security group members"
             # Make sure the displayName has a value of max 100 char
             if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
-                $displayName = 'Security Group - ' + $($entraIDGroup.displayName).substring(0, [System.Math]::Min(100, $($entraIDGroup.displayName).Length))
+                $displayName = "Security Group - $($entraIDGroup.displayName)"
+                $displayName = $($displayName).substring(0, [System.Math]::Min(100, $($displayName).Length))
             }
             else {
-                $displayName = 'Security Group - ' + $entraIDGroup.id
+                $displayName = "Security Group - $($entraIDGroup.id)"
             }
             # Make sure the description has a value of max 100 char
             if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
@@ -248,7 +252,8 @@ try {
                 $description = $null
             }
 
-            $uriMembers = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members/microsoft.graph.user?`$select=id&`$count=true"
+            # Only top = 500 to maximize the amount of account references returned to HelloID
+            $uriMembers = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members/microsoft.graph.user?`$select=id&`$top=500"
             do {
                 $getSecurityGroupMembershipsSplatParams = @{
                     Uri         = $uriMembers
@@ -259,11 +264,12 @@ try {
                     ErrorAction = "Stop"
                 }
                 $groupMembersResponse = Invoke-RestMethod @getSecurityGroupMembershipsSplatParams
+                $accountReferences = $groupMembersResponse.value.id
 
-                if ($groupMembersResponse.'@odata.count' -gt 0) {
+                if ($accountReferences.count -gt 0) {
                     Write-Output @(
                         @{
-                            AccountReferences   = @( $groupMembersResponse.value.id ) # Graph will return a maximum of 100 records by default
+                            AccountReferences   = @( $accountReferences )
                             PermissionReference = @{ Id = $entraIDGroup.id }                        
                             Description         = $description
                             DisplayName         = $displayName

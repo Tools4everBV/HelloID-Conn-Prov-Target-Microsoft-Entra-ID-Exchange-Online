@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.0.2] - 14-11-2025
+### Updated
+ - Update import scripts because length to max 100 char was calculated incorrectly.
+ - Update import account to return data to HelloID with each page.
+
 ## [2.0.1] - 12-11-2025
 ### Updated
  - Update configuration placeholders to use empty GUIDs instead of fake GUIDs.
