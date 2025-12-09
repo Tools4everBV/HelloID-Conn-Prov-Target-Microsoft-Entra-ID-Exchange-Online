@@ -210,14 +210,14 @@ try {
             $bodyUpdateAccountEntra = @{}
             switch ($actionContext.Origin) {
                 'enforcement' {
-                    $auditMessage = 'Update MS-Entra account in delete action was successful'
+                    $auditMessage = 'Update MS-Entra account in disable action was successful'
                     foreach ($entraAccountProperty in ($actionContext.Data | Select-Object * -ExcludeProperty ExchangeOnline, passwordProfile, managerId).PsObject.Properties ) {
                         $bodyUpdateAccountEntra["$($entraAccountProperty.Name)"] = $entraAccountProperty.Value
                     }
                     break
                 }
                 'reconciliation' {
-                    $auditMessage = "Disable MS-Entra account [$($actionContext.References.Account)] in delete action was successful (reconciliation)"
+                    $auditMessage = "Disable MS-Entra account [$($actionContext.References.Account)] was successful (reconciliation)"
                     $bodyUpdateAccountEntra = @{
                         accountEnabled = $false
                     }
