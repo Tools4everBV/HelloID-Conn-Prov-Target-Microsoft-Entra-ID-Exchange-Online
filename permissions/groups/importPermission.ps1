@@ -161,6 +161,7 @@ try {
     # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying M365 groups"
     $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,description&`$top=999"
+    $m365GroupCount = 0
     do {
         $getM365GroupsSplatParams = @{
             Uri         = $uriGroups
@@ -224,6 +225,7 @@ try {
     # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying security groups"
     $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true&`$select=id,displayName,description&`$top=999"
+    $securityGroupCount = 0
     do {
         $getSecurityGroupsSplatParams = @{
             Uri         = $uriGroups
