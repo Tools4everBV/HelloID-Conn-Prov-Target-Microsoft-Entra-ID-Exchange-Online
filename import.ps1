@@ -180,6 +180,7 @@ try {
     # API docs: https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying accounts"
     $uri = "https://graph.microsoft.com/v1.0/users?`$select=$fields&`$top=999"
+    $accountCount = 0
     do {
         $getAccountsSplatParams = @{
             Uri         = $uri
