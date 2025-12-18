@@ -25,7 +25,8 @@ function Resolve-MS-Entra-ExoError {
         try {
             if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
                 $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message | ConvertFrom-Json
-            } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            }
+            elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
                 if ($null -ne $ErrorObject.Exception.Response) {
                     $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
                     if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
@@ -36,14 +37,18 @@ function Resolve-MS-Entra-ExoError {
             $errorDetailsObject = $httpErrorObj.ErrorDetails
             if ($errorDetailsObject.error_description) {
                 $httpErrorObj.FriendlyMessage = $errorDetailsObject.error_description
-            } elseif ($errorDetailsObject.error.message) {
+            }
+            elseif ($errorDetailsObject.error.message) {
                 $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.code): $($errorDetailsObject.error.message)"
-            } elseif ($errorDetailsObject.error.details.message) {
+            }
+            elseif ($errorDetailsObject.error.details.message) {
                 $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.details.code): $($errorDetailsObject.details.message)"
-            } else {
+            }
+            else {
                 $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
             }
-        } catch {
+        }
+        catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
@@ -120,7 +125,8 @@ function Get-MSEntraAccessToken {
 
         $createEntraAccessTokenResponse = Invoke-RestMethod @createEntraAccessTokenSplatParams
         Write-Output $createEntraAccessTokenResponse.access_token
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -132,7 +138,8 @@ function Get-MSEntraCertificate {
         $rawCertificate = [system.convert]::FromBase64String($actionContext.Configuration.AppCertificateBase64String)
         $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $actionContext.Configuration.AppCertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
         Write-Output $certificate
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -154,8 +161,6 @@ try {
     Write-Information $actionMessage
 
     $baseUriM365Group = "https://graph.microsoft.com/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,onPremisesSyncEnabled,groupTypes&`$top=999&`$count=true"
-    $microsoftEntraIDM365Groups = [System.Collections.Generic.List[object]]::new()
-
     $nextLink = $baseUriM365Group
     do {
         $getMicrosoftEntraIDM365GroupsSplatParams = @{
@@ -164,31 +169,26 @@ try {
             Method  = 'GET'
             Verbose = $false
         }
-        $response = Invoke-RestMethod @getMicrosoftEntraIDM365GroupsSplatParams
-        if ($response.Value -is [array]) {
-            $microsoftEntraIDM365Groups.AddRange($response.Value)
-        } elseif ($response.Value) {
-            $microsoftEntraIDM365Groups.Add($response.Value)
+        $microsoftEntraIDM365Groups = Invoke-RestMethod @getMicrosoftEntraIDM365GroupsSplatParams
+
+        foreach ($permission in $microsoftEntraIDM365Groups.value) {
+            $displayName = "M365 Group - $($permission.displayName)"
+            $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length))
+            $outputContext.Permissions.Add(
+                @{
+                    DisplayName    = $displayName
+                    Identification = @{
+                        Id = $permission.id
+                    }
+                }
+            )
         }
+
         $nextLink = $response.'@odata.nextLink'
     } while (-not [string]::IsNullOrEmpty($nextLink))
 
-    foreach ($permission in $microsoftEntraIDM365Groups) {
-        $displayName = "M365 Group - $($permission.displayName)"
-        $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length))
-        $outputContext.Permissions.Add(
-            @{
-                DisplayName    = $displayName
-                Identification = @{
-                    Id = $permission.id
-                }
-            }
-        )
-    }
 
     $baseUriSecurityGroup = "https://graph.microsoft.com/v1.0/groups?`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true&`$select=id,displayName,onPremisesSyncEnabled,groupTypes&`$top=999&`$count=true"
-    $microsoftEntraIDSecurityGroups = [System.Collections.ArrayList]@()
-
     $nextLink = $baseUriSecurityGroup
     do {
         $getMicrosoftEntraIDSecurityGroupsSplatParams = @{
@@ -198,14 +198,9 @@ try {
             Verbose = $false
         }
 
-        $response = Invoke-RestMethod @getMicrosoftEntraIDSecurityGroupsSplatParams
-        if ($response.Value -is [array]) {
-            $microsoftEntraIDSecurityGroups.AddRange($response.Value)
-        } elseif ($response.Value) {
-            $microsoftEntraIDSecurityGroups.Add($response.Value)
-        }
+        $microsoftEntraIDSecurityGroups = Invoke-RestMethod @getMicrosoftEntraIDSecurityGroupsSplatParams
 
-        foreach ($permission in $microsoftEntraIDSecurityGroups) {
+        foreach ($permission in $microsoftEntraIDSecurityGroups.value) {
             $displayName = "Security Group - $($permission.displayName)"
             $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length))
             $outputContext.Permissions.Add(
@@ -220,14 +215,16 @@ try {
 
         $nextLink = $response.'@odata.nextLink'
     } while (-not[string]::IsNullOrEmpty($nextLink))
-} catch {
+}
+catch {
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-MS-Entra-ExoError -ErrorObject $ex
         $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
