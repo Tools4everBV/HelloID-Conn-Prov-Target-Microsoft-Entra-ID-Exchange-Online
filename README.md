@@ -49,21 +49,21 @@ _HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online_ is a _target_ conn
 The _HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online_ connector supports both _Microsoft Entra_ combined with _Microsoft Exchange Online_, as well as standalone _Microsoft Entra_ environments. Integration with _Exchange Online_ can be enabled via the configuration by toggling the `Exchange Online integration` option.
 
 > [!NOTE]
-> When using MS Exchange Online, please note that licensing must be configured separately, for example through group-based licensing (e.g., by assigning licenses via group memberships).
-
+> When using MS Exchange Online, please note that licensing must be configured separately, through group-based licensing.
+> 
 ## Supported  features
 
 The following features are available:
 
-| Feature                                   | Supported | Actions / Type                                                                | Remarks                                              |
-| ----------------------------------------- | --------- | ----------------------------------------------------------------------------- | ---------------------------------------------------- |
-| **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                                       |                                                      |
-| **Permissions**                           | ✅         | Groups (static and dynamic), Licenses, Phone and Email authentication methods |                                                      |
-| **Resources**                             | ✅         | Groups                                                                        | Only available for groups                            |
-| **Uniqueness**                            | ✅         | -                                                                             |                                                      |
-| **Entitlement Import: Accounts**          | ✅         | -                                                                             |                                                      |
-| **Entitlement Import: Permissions**       | ✅         | Groups and Licenses                                                           | No import for Phone and Email authentication methods |
-| **Governance Reconciliation Resolutions** | ✅         | Reconciliation  [Governance Remarks](#governance-remarks)                     |                                                      |
+| Feature                                   | Supported | Actions / Type                                                      | Remarks                                              |
+| ----------------------------------------- | --------- | ------------------------------------------------------------------- | ---------------------------------------------------- |
+| **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                             |                                                      |
+| **Permissions**                           | ✅         | Groups (static and dynamic), Phone and Email authentication methods |                                                      |
+| **Resources**                             | ✅         | Groups                                                              | Only available for groups                            |
+| **Uniqueness**                            | ✅         | -                                                                   |                                                      |
+| **Entitlement Import: Accounts**          | ✅         | -                                                                   |                                                      |
+| **Entitlement Import: Permissions**       | ✅         | Groups                                                              | No import for Phone and Email authentication methods |
+| **Governance Reconciliation Resolutions** | ✅         | Reconciliation  [Governance Remarks](#governance-remarks)           |                                                      |
 
 ## Getting started
 
@@ -259,7 +259,6 @@ The following endpoints are used by the connector
 | -------------------------- | --------------------------------- |
 | /users                     | Handle user information           |
 | /users/{id}                | Get or update specific user       |
-| /users/{id}/assignLicense  | Handle licenses information       |
 | /users/{id}/authentication | Handle authentication method      |
 | /users/{id}/manager        | Get, set or remove user's manager |
 | /groups                    | Handle group information          |
