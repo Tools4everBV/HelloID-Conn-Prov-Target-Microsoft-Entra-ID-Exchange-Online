@@ -184,7 +184,7 @@ try {
             )
         }
 
-        $nextLink = $response.'@odata.nextLink'
+        $nextLink = $microsoftEntraIDM365Groups.'@odata.nextLink'
     } while (-not [string]::IsNullOrEmpty($nextLink))
 
 
@@ -213,7 +213,7 @@ try {
             )
         }
 
-        $nextLink = $response.'@odata.nextLink'
+        $nextLink = $microsoftEntraIDSecurityGroups.'@odata.nextLink'
     } while (-not[string]::IsNullOrEmpty($nextLink))
 }
 catch {
