@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.0.4] - 18-12-2025
+- Fixed retrieving security groups from Entra ID returned duplicate records when the number of groups exceeded 1,000.
+- Removed license scripts from the repository in accordance with Microsoft best practices.
+
 ## [2.0.3] - 09-12-2025
 ### Fixed
 - Corrected audit logging messages in the disable script for Entra account updates (previously incorrectly referenced "delete action").
