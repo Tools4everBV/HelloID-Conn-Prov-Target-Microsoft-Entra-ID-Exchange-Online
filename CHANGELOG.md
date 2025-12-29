@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.1.0] - 29-12-2025
+- Feature, skip ExO actions in update, disable and delete when no ExO account was found.
+- Fix, data returned to in create script was incomplete
+
 ## [2.0.4] - 18-12-2025
 - Fixed retrieving security groups from Entra ID returned duplicate records when the number of groups exceeded 1,000.
 - Removed license scripts from the repository in accordance with Microsoft best practices.
