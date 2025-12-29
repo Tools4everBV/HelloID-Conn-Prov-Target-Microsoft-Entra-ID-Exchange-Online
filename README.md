@@ -227,7 +227,7 @@ Within HelloID, version _3.5.1_ of the Exchange Online module is being used. htt
 - If the mailbox is not found, and Exchange Online integration is required, an exception is thrown.
 
 > [!NOTE]
-> The update, disable and delete script skips actions if the mailbox is not found. This is to prefent errors when de license is already withdrawn.
+> The update, disable and delete script skips actions if the mailbox is not found. This is to prevent errors when de license is already withdrawn.
 
 #### 4. Manager Lookup (if configured)
 
