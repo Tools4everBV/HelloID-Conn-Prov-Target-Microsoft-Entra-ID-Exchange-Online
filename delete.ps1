@@ -307,67 +307,43 @@ try {
             'UpdateAccountEXO' {
 
                 $actionMessage = "updating Exo mailbox with ExternalDirectoryObjectId: $($actionContext.References.Account)"
-
-                $exoAccountPropertiesToQuery = $outputContext.Data.ExchangeOnline.PsObject.Properties.Name
-
-                $getExoAccountSplatParams = @{
-                    Filter     = "ExternalDirectoryObjectID -eq '$($actionContext.References.Account)'"
-                    Properties = $exoAccountPropertiesToQuery
+                $splatUpdateExoAccount = @{
+                    Identity = $actionContext.References.Account
                 }
-                $correlatedAccountExo = Get-EXOMailbox @getExoAccountSplatParams  -Verbose:$false -ErrorAction Stop
-                $outputContext.PreviousData | Add-Member @{
-                    exchangeOnline = $correlatedAccountExo
-                } -Force
-                if ($correlatedAccountExo.Count -lt 1) {
-                    Write-Information "MS-Exo mailbox: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-                    $outputContext.Success = $true
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Message = "MS-Exo mailbox with accountReference: [$($actionContext.References.Account)] could not be found, possibly indicating that it already has been deleted"
-                            IsError = $false
-                        })
+                switch ($actionContext.Origin) {
+                    'enforcement' {
+                        $auditMessage = 'Update of MS-Exo mailbox in delete action was successful'
+                        foreach ($exoAccountProperty in $actionContext.Data.exchangeOnline.PsObject.Properties) {
+                            if ($exoAccountProperty.Name -eq 'HiddenFromAddressListsEnabled') {
+                                $splatUpdateExoAccount['HiddenFromAddressListsEnabled'] = [bool]::Parse($exoAccountProperty.Value)
+                                continue
+                            }
+                            $splatUpdateExoAccount[$exoAccountProperty.Name] = $exoAccountProperty.Value
+                        }
+                        break
+                    }
+                    'reconciliation' {
+                        $auditMessage = "Update MS-Exo mailbox [$($actionContext.References.Account)] HiddenFromAddressListsEnabled to True was successful (reconciliation)"
+                        $splatUpdateExoAccount['HiddenFromAddressListsEnabled'] = $true
+                        break
+                    }
+                    default {
+                        throw "Unknown action origin: [$($actionContext.Origin)] Valid values are 'reconciliation' or 'enforcement'."
+                    }
                 }
-                elseif ($correlatedAccountExo.Count -gt 1) {
-                    throw "Multiple Entra ID accounts found with ID: $($actionContext.References.Account). Please correct this to ensure the correlation results in a single unique account."
+
+                if (-not($actionContext.DryRun -eq $true)) {
+                    $null = Set-Mailbox @splatUpdateExoAccount -Verbose:$false -ErrorAction Stop
                 }
                 else {
-
-                    $splatUpdateExoAccount = @{
-                        Identity = $actionContext.References.Account
-                    }
-                    switch ($actionContext.Origin) {
-                        'enforcement' {
-                            $auditMessage = 'Update of MS-Exo mailbox in delete action was successful'
-                            foreach ($exoAccountProperty in $actionContext.Data.exchangeOnline.PsObject.Properties) {
-                                if ($exoAccountProperty.Name -eq 'HiddenFromAddressListsEnabled') {
-                                    $splatUpdateExoAccount['HiddenFromAddressListsEnabled'] = [bool]::Parse($exoAccountProperty.Value)
-                                    continue
-                                }
-                                $splatUpdateExoAccount[$exoAccountProperty.Name] = $exoAccountProperty.Value
-                            }
-                            break
-                        }
-                        'reconciliation' {
-                            $auditMessage = "Update MS-Exo mailbox [$($actionContext.References.Account)] HiddenFromAddressListsEnabled to True was successful (reconciliation)"
-                            $splatUpdateExoAccount['HiddenFromAddressListsEnabled'] = $true
-                            break
-                        }
-                        default {
-                            throw "Unknown action origin: [$($actionContext.Origin)] Valid values are 'reconciliation' or 'enforcement'."
-                        }
-                    }
-
-                    if (-not($actionContext.DryRun -eq $true)) {
-                        $null = Set-Mailbox @splatUpdateExoAccount -Verbose:$false -ErrorAction Stop
-                    }
-                    else {
-                        $null = Set-Mailbox @splatUpdateExoAccount -Verbose:$false -ErrorAction Stop -WhatIf
-                    }
-                    $outputContext.Success = $true
-                    $outputContext.AuditLogs.Add([PSCustomObject]@{
-                            Message = $auditMessage
-                            IsError = $false
-                        })
+                    $null = Set-Mailbox @splatUpdateExoAccount -Verbose:$false -ErrorAction Stop -WhatIf
                 }
+                $outputContext.Success = $true
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Message = $auditMessage
+                        IsError = $false
+                    })
+                
                 break
             }
 
