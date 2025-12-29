@@ -230,7 +230,7 @@ try {
     $actionMessage = 'connecting to MS-Entra'
     $certificate = Get-MSEntraCertificate
     $entraToken = Get-MSEntraAccessToken -Certificate $certificate
-    if ($actionContext.Configuration.ExchangeOnlineIntegration) {
+    if ($actionContext.Configuration.ExchangeOnlineIntegration -and $actionContext.Data.PSObject.Properties.Name -contains 'exchangeOnline') {
         $actionMessage = 'connecting to Exchange Online'
         $createExoSessionSplatParams = @{
             Organization = $actionContext.Configuration.Organization
@@ -260,7 +260,7 @@ try {
     }
 
     # Get Exo account
-    if ($actionContext.Configuration.ExchangeOnlineIntegration) {
+    if ($actionContext.Configuration.ExchangeOnlineIntegration -and $actionContext.Data.PSObject.Properties.Name -contains 'exchangeOnline') {
         if ($null -ne $correlatedAccountEntra) {
             $actionMessage = "querying Exchange Online Mailbox where [ExternalDirectoryObjectId - $($correlatedAccountEntra.Id)]"
             $exoAccountPropertiesToQuery = $outputContext.Data.ExchangeOnline.PsObject.Properties.Name
@@ -276,8 +276,12 @@ try {
                 exchangeOnline = $correlatedAccountExo
             } -Force
         }
-        if ($null -ne $correlatedAccountEntra -and $correlatedAccountExo.Count -lt 1) {
-            throw 'An existing MS-Entra account was found, but no mailbox is associated with it. To add a mailbox for this account, you need to assign a license.'
+        if ($null -ne $correlatedAccountEntra -and $correlatedAccountExo.Count -eq 0) {
+            Write-Warning 'An existing MS-Entra account was found, but no mailbox is associated with it. To add a mailbox for this account, you need to assign a license.'
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = 'An existing MS-Entra account was found, but no mailbox is associated with it. Updating Exchange Online skipped'
+                    IsError = $false
+            })
         }
     }
 
@@ -315,7 +319,7 @@ try {
 
     # Compare Exo Account
     if ($actionContext.Configuration.ExchangeOnlineIntegration) {
-        if ($null -ne $correlatedAccountExo ) {
+        if (-not [string]::IsNullOrEmpty($correlatedAccountExo)) {
             # Add existing emailAddresses as aliases
             $actionMessage = 'Compare EXO Account'
             if ('emailAddresses' -in $actionContext.Data.ExchangeOnline.PSObject.Properties.Name) {
@@ -546,7 +550,7 @@ try {
         }
     }
 
-    if ($actionContext.Configuration.ExchangeOnlineIntegration) {
+    if ($actionContext.Configuration.ExchangeOnlineIntegration -and $actionContext.Data.PSObject.Properties.Name -contains 'exchangeOnline') {
         foreach ($property in $outputContext.Data.ExchangeOnline.PSObject.Properties) {
             if ($property.name -notin $actionContext.Data.ExchangeOnline.PSObject.Properties.Name ) {
                 $outputContext.Data.ExchangeOnline.$($property.name) = $correlatedAccountExo.$($property.name)
