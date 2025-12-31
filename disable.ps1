@@ -24,7 +24,8 @@ function Resolve-MS-Entra-ExoError {
         }
         if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
             $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
-        } elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
             if ($null -ne $ErrorObject.Exception.Response) {
                 $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
                 if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
@@ -36,15 +37,19 @@ function Resolve-MS-Entra-ExoError {
             $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
             if ($errorDetailsObject.error_description) {
                 $httpErrorObj.FriendlyMessage = $errorDetailsObject.error_description
-            } elseif ($errorDetailsObject.error.message) {
+            }
+            elseif ($errorDetailsObject.error.message) {
                 $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.code): $($errorDetailsObject.error.message)"
-            } elseif ($errorDetailsObject.error.details.message) {
+            }
+            elseif ($errorDetailsObject.error.details.message) {
                 $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.details.code): $($errorDetailsObject.details.message)"
-            } else {
+            }
+            else {
                 $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
             }
 
-        } catch {
+        }
+        catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
         }
         Write-Output $httpErrorObj
@@ -121,7 +126,8 @@ function Get-MSEntraAccessToken {
 
         $createEntraAccessTokenResponse = Invoke-RestMethod @createEntraAccessTokenSplatParams
         Write-Output $createEntraAccessTokenResponse.access_token
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -133,7 +139,8 @@ function Get-MSEntraCertificate {
         $rawCertificate = [system.convert]::FromBase64String($actionContext.Configuration.AppCertificateBase64String)
         $certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($rawCertificate, $actionContext.Configuration.AppCertificatePassword, [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable)
         Write-Output $certificate
-    } catch {
+    }
+    catch {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
@@ -146,7 +153,8 @@ function Convert-StringBooleanToBoolean {
     foreach ($property in $InputObject.PSObject.Properties) {
         if ($property.TypeNameOfValue -eq 'System.Management.Automation.PSCustomObject') {
             Convert-StringBooleanToBoolean -InputObject $property.Value
-        } else {
+        }
+        else {
             if ($property.Value -eq 'True' -or $property.Value -eq 'False') {
                 $InputObject."$($property.Name)" = [bool]::Parse($property.Value)
             }
@@ -164,7 +172,7 @@ try {
     # Setup Connection with EntraID/Exo
     $certificate = Get-MSEntraCertificate
     $entraToken = Get-MSEntraAccessToken -Certificate $certificate
-    if ($actionContext.Configuration.ExchangeOnlineIntegration) {
+    if ($actionContext.Configuration.ExchangeOnlineIntegration -and ($actionContext.Data.PSObject.Properties.Name -contains 'exchangeOnline' -or $actionContext.Origin -eq 'reconciliation')) {
         $actionMessage = "connecting to Exchange Online"
         $createExoSessionSplatParams = @{
             Organization = $actionContext.Configuration.Organization
@@ -177,87 +185,114 @@ try {
     Write-Information 'Verifying if a MS-Entra-Exo account exists'
 
     # Get Entra account
-    $actionMessage = "querying MS-Entra account with AccountReference [$($actionContext.References.Account)]"
-    $selectPropertiesToGetUser = ($outputContext.Data | Select-Object * -ExcludeProperty ExchangeOnline).PSObject.Properties.Name -join ','
-    $splatGetEntraUser = @{
-        Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)?`$select=$selectPropertiesToGetUser"
-        Method  = 'GET'
-        Headers = @{'Authorization' = "Bearer $($entraToken)" }
-
-    }
+    $actionMessage = 'verifying if a MS-Entra-Exo account exists'
     try {
+        $correlatedAccountEntra = $null
+        $selectPropertiesToGetUser = $selectPropertiesToGetUser = 'id,' + (($outputContext.Data | Select-Object * -ExcludeProperty ExchangeOnline ).PSObject.Properties.Name -join ',')
+        $splatGetEntraUser = @{
+            Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)?`$select=$selectPropertiesToGetUser"
+            Method  = 'GET'
+            Headers = @{'Authorization' = "Bearer $($entraToken)" }
+        }
         $correlatedAccountEntra = Invoke-RestMethod @splatGetEntraUser -Verbose:$false
         $outputContext.PreviousData = $correlatedAccountEntra | Select-Object -Property *
-    } catch {
+    }
+    catch {
         if ($_.Exception.Response.StatusCode -eq 404) {
-            $correlatedAccountEntra = $null;
-        } else {
+            $correlatedAccountEntra = $null
+        }
+        else {
             throw $_
         }
     }
 
-    if ($null -ne $correlatedAccountEntra ) {
-        $action = 'DisableAccount'
-    } else {
-        $action = 'NotFound'
+    # Get Exo account
+    if ($actionContext.Configuration.ExchangeOnlineIntegration -and ($actionContext.Data.PSObject.Properties.Name -contains 'exchangeOnline' -or $actionContext.Origin -eq 'reconciliation')) {
+        if ($null -ne $correlatedAccountEntra) {
+            $actionMessage = "querying Exchange Online Mailbox where [ExternalDirectoryObjectId - $($correlatedAccountEntra.Id)]"
+            $exoAccountPropertiesToQuery = $outputContext.Data.ExchangeOnline.PsObject.Properties.Name
+            $getExoAccountSplatParams = @{
+                Filter     = "ExternalDirectoryObjectID -eq '$($correlatedAccountEntra.Id)'"
+                Properties = $exoAccountPropertiesToQuery
+            }
+            $correlatedAccountExo = (Get-EXOMailbox @getExoAccountSplatParams -Verbose:$false -ErrorAction Stop) | Select-Object -First 1
+            if ($correlatedAccountExo.PSObject.Properties.name -contains 'EmailAddresses') {
+                $correlatedAccountExo.EmailAddresses = $correlatedAccountExo.EmailAddresses | Sort-Object
+            }
+            $outputContext.PreviousData | Add-Member @{
+                exchangeOnline = $correlatedAccountExo
+            } -Force
+        }
+        if ($null -ne $correlatedAccountEntra -and $correlatedAccountExo.Count -eq 0) {
+            $correlatedAccountExo = $null
+            Write-Warning 'An existing MS-Entra account was found, but no mailbox is associated with it. To add a mailbox for this account, you need to assign a license.'
+            $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = 'An existing MS-Entra account was found, but no mailbox is associated with it. Disabling Exchange Online skipped'
+                    IsError = $false
+                })
+        }
+    }
+
+    $actionList = [System.Collections.Generic.list[object]]::new()
+    if ($null -ne $correlatedAccountEntra) {
+        $actionList.Add('DisableAccountEntra')
+        if ($null -ne $correlatedAccountExo -and $actionContext.Configuration.ExchangeOnlineIntegration) {
+            $actionList.Add('DisableAccountEXO')
+        }
+    }
+    else {
+        $actionList.Add('NotFound')
     }
 
     # Process
-    switch ($action) {
-        'DisableAccount' {
+    Write-Information "Actions to be executed: $($actionList -join ', ')"
+    foreach ($action in $actionList) {
+        switch ($action) {
+            'DisableAccountEntra' {
 
-            $actionMessage = "disabling  MS-Entra account with AccountReference [$($actionContext.References.Account)]"
-            $bodyUpdateAccountEntra = @{}
-            switch ($actionContext.Origin) {
-                'enforcement' {
-                    $auditMessage = 'Update MS-Entra account in disable action was successful'
-                    foreach ($entraAccountProperty in ($actionContext.Data | Select-Object * -ExcludeProperty ExchangeOnline, passwordProfile, managerId).PsObject.Properties ) {
-                        $bodyUpdateAccountEntra["$($entraAccountProperty.Name)"] = $entraAccountProperty.Value
+                $actionMessage = "disabling MS-Entra account with AccountReference [$($actionContext.References.Account)]"
+                $bodyUpdateAccountEntra = @{}
+                switch ($actionContext.Origin) {
+                    'enforcement' {
+                        $auditMessage = 'Update MS-Entra account in disable action was successful'
+                        foreach ($entraAccountProperty in ($actionContext.Data | Select-Object * -ExcludeProperty ExchangeOnline, passwordProfile, managerId).PsObject.Properties ) {
+                            $bodyUpdateAccountEntra["$($entraAccountProperty.Name)"] = $entraAccountProperty.Value
+                        }
+                        break
                     }
-                    break
-                }
-                'reconciliation' {
-                    $auditMessage = "Disable MS-Entra account [$($actionContext.References.Account)] was successful (reconciliation)"
-                    $bodyUpdateAccountEntra = @{
-                        accountEnabled = $false
+                    'reconciliation' {
+                        $auditMessage = "Disable MS-Entra account [$($actionContext.References.Account)] was successful (reconciliation)"
+                        $bodyUpdateAccountEntra = @{
+                            accountEnabled = $false
+                        }
+                        break
                     }
-                    break
-                }
-                default {
-                    throw "Unknown action origin: [$($actionContext.Origin)] Valid values are 'reconciliation' or 'enforcement'."
-                }
-            }
-
-            $splatUpdateEntraAccount = @{
-                Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
-                Method      = "PATCH"
-                Body        = $bodyUpdateAccountEntra | ConvertTo-Json -Depth 10
-                ContentType = 'application/json;charset=utf-8'
-                Headers     = @{'Authorization' = "Bearer $($entraToken)" }
-            }
-            if (-not($actionContext.DryRun -eq $true)) {
-                $null = Invoke-RestMethod @splatUpdateEntraAccount -Verbose:$false
-            }
-            $outputContext.Success = $true
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = $auditMessage
-                    IsError = $false
-                })
-
-            if ($actionContext.Configuration.ExchangeOnlineIntegration -and ($null -ne $actionContext.Data.exchangeOnline -or $actionContext.Origin -eq 'reconciliation')) {
-                $exoAccountPropertiesToQuery = $outputContext.Data.ExchangeOnline.PsObject.Properties.Name
-                $getExoAccountSplatParams = @{
-                    Filter     = "ExternalDirectoryObjectID -eq '$($actionContext.References.Account)'"
-                    Properties = $exoAccountPropertiesToQuery
-                }
-                $correlatedAccountExo = Get-EXOMailbox @getExoAccountSplatParams -Verbose:$false -ErrorAction Stop
-                $outputContext.PreviousData | Add-Member @{
-                    exchangeOnline = $correlatedAccountExo
-                } -Force
-                if ($correlatedAccountExo.Count -lt 1) {
-                    throw "An existing MS-Entra account was found, but no mailbox is associated with it. To add a mailbox for this account, you need to assign a license."
+                    default {
+                        throw "Unknown action origin: [$($actionContext.Origin)] Valid values are 'reconciliation' or 'enforcement'."
+                    }
                 }
 
+                $splatUpdateEntraAccount = @{
+                    Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
+                    Method      = "PATCH"
+                    Body        = $bodyUpdateAccountEntra | ConvertTo-Json -Depth 10
+                    ContentType = 'application/json;charset=utf-8'
+                    Headers     = @{'Authorization' = "Bearer $($entraToken)" }
+                }
+                if (-not($actionContext.DryRun -eq $true)) {
+                    $null = Invoke-RestMethod @splatUpdateEntraAccount -Verbose:$false
+                }
+                $outputContext.Success = $true
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Message = $auditMessage
+                        IsError = $false
+                    })
+                break
+            }
+
+            'DisableAccountEXO' {
+
+                $actionMessage = "disabling EXO account with AccountReference [$($actionContext.References.Account)]"
                 $splatUpdateExoAccount = @{
                     Identity = $actionContext.References.Account
                 }
@@ -286,7 +321,8 @@ try {
 
                 if (-not($actionContext.DryRun -eq $true)) {
                     $null = Set-Mailbox @splatUpdateExoAccount -Verbose:$false -ErrorAction Stop
-                } else {
+                }
+                else {
                     $null = Set-Mailbox @splatUpdateExoAccount -Verbose:$false -ErrorAction Stop -WhatIf
                 }
                 $outputContext.Success = $true
@@ -294,23 +330,23 @@ try {
                         Message = $auditMessage
                         IsError = $false
                     })
+                
+                break
             }
-            break
-        }
 
-        'NotFound' {
-            Write-Information "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could have been deleted"
-            $outputContext.Success = $true
-            $outputContext.AuditLogs.Add([PSCustomObject]@{
-                    Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could have been deleted"
-                    IsError = $false
-                })
-            break
+            'NotFound' {
+                Write-Information "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could have been deleted"
+                $outputContext.Success = $true
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                        Message = "MS-Entra-Exo account: [$($actionContext.References.Account)] could not be found, possibly indicating that it could have been deleted"
+                        IsError = $false
+                    })
+                break
+            }
         }
     }
-
-} catch {
-
+}
+catch {
     $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
@@ -318,7 +354,8 @@ try {
         $errorObj = Resolve-MS-Entra-ExoError -ErrorObject $ex
         $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
         Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
-    } else {
+    }
+    else {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
         Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
@@ -326,7 +363,8 @@ try {
             Message = $auditMessage
             IsError = $true
         })
-} finally {
+}
+finally {
     # Convert string booleans to actual booleans
     $null = Convert-StringBooleanToBoolean -InputObject $outputContext.Data
 
@@ -337,7 +375,7 @@ try {
         }
     }
 
-    if ($actionContext.Configuration.ExchangeOnlineIntegration) {
+    if ($actionContext.Configuration.ExchangeOnlineIntegration -and $actionContext.Data.PSObject.Properties.Name -contains 'exchangeOnline') {
         foreach ($property in $outputContext.Data.ExchangeOnline.PSObject.Properties) {
             if ($property.name -notin $actionContext.Data.ExchangeOnline.PSObject.Properties.Name ) {
                 $outputContext.Data.ExchangeOnline.$($property.name) = $correlatedAccountExo.$($property.name)

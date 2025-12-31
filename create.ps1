@@ -528,7 +528,7 @@ try {
         })
 } finally {
     # Filling the None output context with values from the Entra and Exo accounts.
-    if ( $null -ne $correlatedAccountEntra) {
+    if (-not [string]::IsNullOrEmpty($correlatedAccountEntra)) {
         foreach ($property in $outputContext.Data.PSObject.Properties) {
             if ($property.name -notin $actionContext.Data.PSObject.Properties.Name ) {
                 $outputContext.Data.$($property.name) = $correlatedAccountEntra.$($property.name)

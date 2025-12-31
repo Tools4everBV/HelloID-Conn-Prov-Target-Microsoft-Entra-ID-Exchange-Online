@@ -226,6 +226,9 @@ Within HelloID, version _3.5.1_ of the Exchange Online module is being used. htt
 - If an Entra account is found, the script attempts to locate the associated Exchange Online mailbox using the `ExternalDirectoryObjectId`.
 - If the mailbox is not found, and Exchange Online integration is required, an exception is thrown.
 
+> [!NOTE]
+> The update, disable and delete script skips actions if the mailbox is not found. This is to prevent errors when de license is already withdrawn.
+
 #### 4. Manager Lookup (if configured)
 
 - If `setManagerOnCreate` is enabled and a `ManagerAccount` reference is provided, it attempts to validate the manager's existence.
