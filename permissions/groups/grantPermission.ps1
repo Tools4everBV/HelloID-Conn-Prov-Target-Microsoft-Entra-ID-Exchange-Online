@@ -192,7 +192,6 @@ try {
         'GrantPermission' {
             if (-not($actionContext.DryRun -eq $true)) {
                 $actionMessage = "Granting MS-Entra-Exo permission group: [$($actionContext.PermissionDisplayName)] - [$($actionContext.References.Permission.Id)]"
-                Write-Information = $actionMessage
 
                 # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0&tabs=http
                 $splatGrantPermission = @{
