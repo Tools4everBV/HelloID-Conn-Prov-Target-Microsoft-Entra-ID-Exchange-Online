@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.1.1] - 03-02-2026
+- Fix, success was not true when no person was found when revoking a group
+
 ## [2.1.0] - 29-12-2025
 - Feature, skip ExO actions in update, disable and delete when no ExO account was found.
 - Fix, data returned to in create script was incomplete
