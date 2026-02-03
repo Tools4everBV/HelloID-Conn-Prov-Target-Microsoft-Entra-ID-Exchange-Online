@@ -175,7 +175,7 @@ try {
         $correlatedAccountEntra = Invoke-RestMethod @splatGetEntraUser -Verbose:$false
     } catch {
         if ($_.Exception.Response.StatusCode -eq 404) {
-            throw "Entra Account [$($actionContext.References.Account)] could not be found, possibly indicating that it could be deleted"
+            $correlatedAccountEntra = $null
         } else {
             throw $_
         }

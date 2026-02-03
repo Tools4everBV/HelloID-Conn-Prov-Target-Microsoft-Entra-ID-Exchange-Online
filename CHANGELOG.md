@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.1.2] - 03-02-2026
+- Fix: when no account was found, the script used a throw. This was changed so the script flow works as intended.
+
 ## [2.1.1] - 03-02-2026
 - Fix, success was not true when no person was found when revoking a group
 
