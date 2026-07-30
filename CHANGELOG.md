@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. The format 
 ### Fixed
 - **correlateOnly/create.ps1**: Changed correlation value from `accountFieldValue` to `personFieldValue` to support Governance correlation scenarios correctly.
 - **create.ps1**: Fixed Exchange mailbox creation to use `mailNickName` for the `Name` parameter (which must be unique) and added explicit `DisplayName` parameter. This resolves errors when creating mailboxes for users with duplicate display names.
+- **permissions/emailAuthenticationMethods/grantPermission.ps1**: Changed email authentication method to use personal email address instead of business email address. This ensures password reset codes are sent to an accessible email address rather than the business account being reset.
 
 ### Added
 - **correlateOnly/fieldMapping.json**: Added `userPrincipalName` as an additional correlation field alongside `employeeId`, enabling environments to correlate on either attribute as needed.
