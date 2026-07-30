@@ -396,7 +396,8 @@ try {
                 $actionMessage = "creating Exchange Online Mailbox with displayName [$($actionContext.Data.DisplayName)] and userPrincipalName [$($actionContext.Data.userPrincipalName)]"
                 $createExoAccountSplatParams = @{
                     Alias                     = $actionContext.Data.mailNickName
-                    Name                      = $actionContext.Data.displayName
+                    Name                      = $actionContext.Data.mailNickName
+                    DisplayName               = $actionContext.Data.displayName
                     PrimarySmtpAddress        = ($actionContext.Data.exchangeOnline.emailAddresses | Where-Object { $_ -cmatch '^SMTP:' } | Select-Object -First 1) -replace 'SMTP:', ''
                     MicrosoftOnlineServicesID = $actionContext.Data.userPrincipalName
                     ResetPasswordOnNextLogon  = [bool]($actionContext.Data.passwordProfile.forceChangePasswordNextSignIn)

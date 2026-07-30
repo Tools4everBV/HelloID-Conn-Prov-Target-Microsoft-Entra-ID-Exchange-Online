@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.5.2] - 30-07-2026
+### Fixed
+- **correlateOnly/create.ps1**: Changed correlation value from `accountFieldValue` to `personFieldValue` to support Governance correlation scenarios correctly.
+- **create.ps1**: Fixed Exchange mailbox creation to use `mailNickName` for the `Name` parameter (which must be unique) and added explicit `DisplayName` parameter. This resolves errors when creating mailboxes for users with duplicate display names.
+
+### Added
+- **correlateOnly/fieldMapping.json**: Added `userPrincipalName` as an additional correlation field alongside `employeeId`, enabling environments to correlate on either attribute as needed.
+
 ## [2.5.1] - 30-07-2026
 ### Fixed
 - **uniquenessCheck.ps1**: Fixed bug where email addresses were incorrectly flagged as non-unique during `create` operations, even when the person was already using that email address themselves. The script now properly performs correlation lookup (employeeId → givenName fallback) during create to identify if the account already exists, and correctly checks self-usage across all operation types.
