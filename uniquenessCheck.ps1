@@ -8,8 +8,11 @@
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
 # Script Configuration, only Required for ExchangeOnlineIntegration.
-$entraMailboxFallbackLookupProperty = 'givenName'
+$correlationField = 'employeeId'
 $correlationValue = $personContext.Person.ExternalId
+
+$entraMailboxFallbackLookupProperty = 'givenName'
+$entraMailboxFallbackLookupPropertyValue = $personContext.Person.ExternalId
 
 #region functions
 function Resolve-MS-Entra-ExoError {
@@ -205,7 +208,7 @@ try {
     # Add Authorization after printing splat
     $entraIDHeaders['Authorization'] = "Bearer $($entraToken)"
 
-    # Verify account reference
+    # Verify account reference and perform correlation lookup if needed
     if ($actionContext.Operation.ToLower() -ne 'create') {
         $actionMessage = 'verifying account reference'
         if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
@@ -216,18 +219,31 @@ try {
         if ([string]::IsNullOrEmpty($correlationValue)) {
             throw 'The correlation value could not be found on the person'
         }
-        # Get Entra account on Fallback field to handle ExchangeOnlineIntegration where the correlation field is not yet populated
-        $actionMessage = "querying MS-Entra account on fallback field where [$entraMailboxFallbackLookupProperty] = [$($correlationValue)]"
+        # Get Entra account on correlation field
+        $actionMessage = "querying MS-Entra account on correlation field where [$correlationField] = [$($correlationValue)]"
         $selectPropertiesToGetUser = ($outputContext.Data | Select-Object * -ExcludeProperty ExchangeOnline, managerId ).PSObject.Properties.Name -join ','
         $splatGetEntraUser = @{
-            Uri     = "https://graph.microsoft.com/v1.0/users?`$filter=$entraMailboxFallbackLookupProperty eq '$($correlationValue)'&`$select=$selectPropertiesToGetUser"
+            Uri     = "https://graph.microsoft.com/v1.0/users?`$filter=$correlationField eq '$($correlationValue)'&`$select=$selectPropertiesToGetUser"
             Method  = 'GET'
             Headers = @{'Authorization' = "Bearer $($entraToken)" }
         }
-        $correlatedAccountEntraFallBack = (Invoke-RestMethod @splatGetEntraUser).value
-        Write-Warning "correlatedAccountEntraFallBack: $($correlatedAccountEntraFallBack | ConvertTo-Json)"
-        if ($correlatedAccountEntraFallBack.Count -eq 1) {
-            $actionContext.References.Account = $correlatedAccountEntraFallBack.id
+        $correlatedAccountEntra = (Invoke-RestMethod @splatGetEntraUser).value
+        if ($correlatedAccountEntra.Count -eq 1) {
+            $actionContext.References.Account = $correlatedAccountEntra.id
+        }
+        elseif ($correlatedAccountEntra.Count -eq 0) {
+            # Get Entra account on Fallback field to handle ExchangeOnlineIntegration where the correlation field is not yet populated
+            $actionMessage = "querying MS-Entra account on fallback field where [$entraMailboxFallbackLookupProperty] = [$($entraMailboxFallbackLookupPropertyValue)]"
+            $selectPropertiesToGetUser = ($outputContext.Data | Select-Object * -ExcludeProperty ExchangeOnline, managerId ).PSObject.Properties.Name -join ','
+            $splatGetEntraUser = @{
+                Uri     = "https://graph.microsoft.com/v1.0/users?`$filter=$entraMailboxFallbackLookupProperty eq '$($entraMailboxFallbackLookupPropertyValue)'&`$select=$selectPropertiesToGetUser"
+                Method  = 'GET'
+                Headers = @{'Authorization' = "Bearer $($entraToken)" }
+            }
+            $correlatedAccountEntraFallBack = (Invoke-RestMethod @splatGetEntraUser).value
+            if ($correlatedAccountEntraFallBack.Count -eq 1) {
+                $actionContext.References.Account = $correlatedAccountEntraFallBack.id
+            }
         }
     }
 
@@ -284,7 +300,8 @@ try {
         # Check property uniqueness
         $actionMessage = "checking if property [$($fieldToCheck.Name)] with value [$($fieldToCheck.Value.accountValue)] is unique"
         if (@($correlatedAccount).count -gt 0) {
-            if ($actionContext.Operation.ToLower() -ne 'create' -and $correlatedAccount.id -eq $actionContext.References.Account) {
+            # Check if the person is using the value themselves
+            if (-not [string]::IsNullOrEmpty($actionContext.References.Account) -and $correlatedAccount.id -eq $actionContext.References.Account) {
                 Write-Information "Person is using property [$($fieldToCheck.Name)] with value [$($fieldToCheck.Value.accountValue)] themselves."
             }
             else {

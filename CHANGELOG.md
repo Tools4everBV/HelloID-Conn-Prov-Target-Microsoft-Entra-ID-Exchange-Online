@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.5.1] - 30-07-2026
+### Fixed
+- **uniquenessCheck.ps1**: Fixed bug where email addresses were incorrectly flagged as non-unique during `create` operations, even when the person was already using that email address themselves. The script now properly performs correlation lookup (employeeId → givenName fallback) during create to identify if the account already exists, and correctly checks self-usage across all operation types.
+
+### Changed
+- **uniquenessCheck.ps1**: Added explicit `$correlationField` and `$entraMailboxFallbackLookupPropertyValue` variables for consistency with `create.ps1`.
+
+### Added
+- **README.md**: Added documentation explaining that correlation configuration must be manually updated in `uniquenessCheck.ps1` when using different correlation fields, as `$actionContext.CorrelationConfiguration` is not available in the uniqueness check lifecycle action.
+
 ## [2.5.0] - 10-07-2026
 ### Added
 - Support for managing team channels

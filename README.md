@@ -151,6 +151,23 @@ The correlation configuration is used to specify which properties will be used t
 > [!TIP]
 > _For more information on correlation, please refer to our correlation [documentation](https://docs.helloid.com/en/provisioning/target-systems/powershell-v2-target-systems/correlation.html) pages_.
 
+> [!IMPORTANT]
+> **Manual configuration required in uniquenessCheck.ps1**
+> 
+> If you choose a different correlation field than `EmployeeId`, you **must** also update the `uniquenessCheck.ps1` script manually. The `$actionContext.CorrelationConfiguration` object is not available in the uniqueness check lifecycle action, so the correlation settings are hardcoded in the script.
+> 
+> Update the following variables at the top of `uniquenessCheck.ps1`:
+> ```powershell
+> $correlationField = 'employeeId'  # Change this to match your Account correlation field
+> $correlationValue = $personContext.Person.ExternalId  # Change this to match your Person correlation field
+> ```
+> 
+> Similarly, if you use a different fallback property, update:
+> ```powershell
+> $entraMailboxFallbackLookupProperty = 'givenName'  # Change if using a different fallback
+> $entraMailboxFallbackLookupPropertyValue = $personContext.Person.ExternalId  # Change if using a different value
+> ```
+
 ### Field mapping
 
 The field mapping can be imported by using the _fieldMapping.json_ file.
@@ -160,6 +177,9 @@ The field mapping can be imported by using the _fieldMapping.json_ file.
 ### Correlation value
 
 Initial correlation is based on the `EmployeeId` with a fall back to `GivenName` and `FirstName`. See also: [Fall back property.](#fallback-property-exo-only)
+
+> [!IMPORTANT]
+> When changing the correlation field from the default `EmployeeId`, remember to also update the hardcoded values in `uniquenessCheck.ps1`. See [Correlation configuration](#correlation-configuration) for details.
 
 #### Fallback property (ExO only)
 
@@ -186,6 +206,9 @@ Fall back must be configured within the _create_ lifecycle action.
 $entraMailboxFallbackLookupProperty = 'givenName'
 $exchangeMailboxFallbackLookupProperty = 'FirstName'
 ```
+
+> [!IMPORTANT]
+> If you change the fallback property, you must also update the same configuration in `uniquenessCheck.ps1`. See [Correlation configuration](#correlation-configuration) for details.
 
 #### properties without the exchangeOnline prefix
 
