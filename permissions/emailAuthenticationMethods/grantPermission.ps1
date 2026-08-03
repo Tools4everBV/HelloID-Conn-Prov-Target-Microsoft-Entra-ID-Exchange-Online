@@ -160,7 +160,7 @@ try {
         throw "The account reference could not be found"
     }
 
-    $email = $($personContext.Person.Contact.Business.Email)
+    $email = $($personContext.Person.Contact.Personal.Email)
 
     # Setup Connection with Entra/Exo
     $actionMessage = 'connecting to MS-Entra'

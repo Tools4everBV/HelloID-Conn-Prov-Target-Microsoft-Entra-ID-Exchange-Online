@@ -211,8 +211,6 @@ try {
     if (-Not($actionContext.Operation -eq "revoke")) {
         # Example: Contract Based Logic:
         foreach ($contract in $personContext.Person.Contracts) {
-            $actionMessage = "querying Microsoft Entra ID group for resource: $($resource | ConvertTo-Json)"
-
             Write-Information "Contract: $($contract.ExternalId). In condition: $($contract.Context.InConditions)"
             if ($contract.Context.InConditions -OR ($actionContext.DryRun -eq $true)) {
                 # Get group to use objectGuid to avoid name change issues
@@ -226,6 +224,8 @@ try {
 
                 # Sanitize group name, e.g. replace " - " with "_" or other sanitization actions
                 $correlationValue = Get-SanitizedGroupName -Name $correlationValue
+
+                $actionMessage = "querying Microsoft Entra ID group where [$correlationField] = [$correlationValue] for contract [$($contract.ExternalId)]"
 
                 $baseUri = "https://graph.microsoft.com/"
                 $getMicrosoftEntraIDGroupSplatParams = @{

@@ -216,7 +216,7 @@ try {
                 AccountReference = $account.id
                 DisplayName      = $displayName
                 UserName         = $userName
-                Enabled          = $account.accountEnabled
+                Enabled          = $false # When using correlate only, no account access is granted. This should be false for the import report.
                 Data             = $account
             }
             $accountCount++

@@ -154,7 +154,7 @@ function Get-MSEntraCertificate {
 try {
     # Define correlation
     $correlationField = $actionContext.CorrelationConfiguration.accountField
-    $correlationValue = $actionContext.CorrelationConfiguration.accountFieldValue
+    $correlationValue = $actionContext.CorrelationConfiguration.personFieldValue
 
     # Define properties to query
     $accountPropertiesToQuery = @("id") + $outputContext.Data.PsObject.Properties.Name | Select-Object -Unique
