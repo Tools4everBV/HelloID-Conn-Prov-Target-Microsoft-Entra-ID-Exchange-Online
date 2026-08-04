@@ -1,6 +1,5 @@
 #################################################
-# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Import
-# Correlate to account
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-Permissions-Groups-Import
 # PowerShell V2
 #################################################
 
@@ -152,24 +151,6 @@ function Get-MSEntraCertificate {
 #endregion functions
 
 try {
-    Write-Information 'Starting target account import'
-
-    # Define properties to query
-    $importFields = $($actionContext.ImportFields)
-    $importFields = $importFields | Where-Object { $_ -notlike 'exchangeonline.*' }
-    $importFields = $importFields -replace '\..*', ''
-    $importFields = $importFields | Select-Object -Unique
-
-    # Add mandatory fields for HelloID to query and return
-    if ('id' -notin $importFields) { $importFields += 'id' }
-    if ('accountEnabled' -notin $importFields) { $importFields += 'accountEnabled ' }
-    if ('displayName' -notin $importFields) { $importFields += 'displayName' }
-    if ('userPrincipalName' -notin $importFields) { $importFields += 'userPrincipalName' }
-
-    # Convert to a ',' string
-    $fields = $importFields -join ','
-    Write-Information "Querying fields [$fields]"
-
     # Setup Connection with Entra/Exo
     $actionMessage = 'connecting to MS-Entra'
     $certificate = Get-MSEntraCertificate
@@ -184,9 +165,8 @@ try {
 
     # API docs: https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying accounts"
-    $uri = "https://graph.microsoft.com/v1.0/users?`$select=$fields&`$top=999"
-    # Example how to only filter on 'Member' or 'Guest'
-    # $uri = "https://graph.microsoft.com/v1.0/users?`$filter=userType eq 'Member'&`$select=$fields&`$top=999"
+    # Query only Guests, as we only want to import guest group memberships to HelloID, and not regular user accounts
+    $uri = "https://graph.microsoft.com/v1.0/users?`$filter=userType eq 'Guest'&`$select=id&`$top=999"
     $accountCount = 0
     do {
         $getAccountsSplatParams = @{
@@ -199,33 +179,34 @@ try {
         }
         $existingAccounts = Invoke-RestMethod @getAccountsSplatParams
         foreach ($account in $existingAccounts.value) {
-            # Make sure the DisplayName has a value
-            if (-not([string]::IsNullOrEmpty($account.displayName))) {
-                $displayName = $($account.displayName).substring(0, [System.Math]::Min(100, $($account.displayName).Length))
-            }
-            else {
-                $displayName = $account.id
-            }
-            # Make sure the Username has a value
-            if (-not([string]::IsNullOrEmpty($account.userPrincipalName))) {
-                $userName = $($account.userPrincipalName).substring(0, [System.Math]::Min(100, $($account.userPrincipalName).Length))
-            }
-            else {
-                $userName = $account.id
-            }
-            # Return the result
-            Write-Output @{
-                AccountReference = $account.id
-                DisplayName      = $displayName
-                UserName         = $userName
-                Enabled          = $account.accountEnabled
-                Data             = $account
-            }
+            $actionMessage = "querying account group members"
+            # Make sure the displayName has a value of max 100 char
+            $groupsUri = "https://graph.microsoft.com/v1.0/users/$($account.id)/memberOf/microsoft.graph.group?`$count=true&`$select=id,displayName,groupTypes,mailEnabled,securityEnabled,onPremisesSyncEnabled&`$filter=not(groupTypes/any(c:c eq 'DynamicMembership')) and ((mailEnabled eq false and securityEnabled eq true and onPremisesSyncEnabled eq null) or groupTypes/any(c:c eq 'Unified'))"
+            do {
+                $getAccountMembershipsSplatParams = @{
+                    Uri         = $groupsUri
+                    Headers     = $headers
+                    Method      = 'GET'
+                    ContentType = 'application/json; charset=utf-8'
+                    Verbose     = $false
+                    ErrorAction = "Stop"
+                }
+                $groupMembersResponse = Invoke-RestMethod @getAccountMembershipsSplatParams
+                foreach ($entraIDGroup in $groupMembersResponse.value) {                                    
+                    Write-Output @(
+                        @{
+                            AccountReferences   = @( $account.id )
+                            PermissionReference = @{ Id = $entraIDGroup.id }                        
+                        }
+                    )
+                }
+                $groupsUri = $groupMembersResponse.'@odata.nextLink'
+            } while ($groupsUri)
             $accountCount++
         }
         $uri = $existingAccounts.'@odata.nextLink'
     } while ($uri)
-    Write-Information "Successfully queried [$accountCount] existing accounts"
+    Write-Information "Successfully queried memberships for [$accountCount] existing accounts"
 }
 catch {
     $ex = $PSItem
