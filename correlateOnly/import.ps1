@@ -162,7 +162,7 @@ try {
 
     # Add mandatory fields for HelloID to query and return
     if ('id' -notin $importFields) { $importFields += 'id' }
-    if ('accountEnabled' -notin $importFields) { $importFields += 'accountEnabled ' }
+    if ('accountEnabled' -notin $importFields) { $importFields += 'accountEnabled' }
     if ('displayName' -notin $importFields) { $importFields += 'displayName' }
     if ('userPrincipalName' -notin $importFields) { $importFields += 'userPrincipalName' }
 
