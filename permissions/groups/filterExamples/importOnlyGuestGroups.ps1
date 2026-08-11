@@ -1,5 +1,5 @@
 #################################################
-# HelloID-Conn-Prov-Target-MS-Entra-Exo-Permissions-Groups-Import
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-Permissions-Guest-Groups-Import
 # PowerShell V2
 #################################################
 
