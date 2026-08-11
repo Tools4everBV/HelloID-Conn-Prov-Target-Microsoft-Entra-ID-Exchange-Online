@@ -1,7 +1,7 @@
-############################################################
-# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-EducationalGroups-Members-Permissions
+#################################################
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-Permissions-Member-Groups-Import
 # PowerShell V2
-############################################################
+#################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -127,6 +127,7 @@ function Get-MSEntraAccessToken {
             Verbose     = $false
             ErrorAction = 'Stop'
         }
+
         $createEntraAccessTokenResponse = Invoke-RestMethod @createEntraAccessTokenSplatParams
         Write-Output $createEntraAccessTokenResponse.access_token
     }
@@ -147,31 +148,10 @@ function Get-MSEntraCertificate {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
-
-function Get-SchoolYear {
-    # Calculate school year dependencies
-    # School year definition in numbers of 4 or 2 digits
-    $schoolYearLength = 2 # Length of school year used in the Teams name - e.g. 24-25 for 2 or 2024-2025 for 4
-    $schoolYearSeperator = "" # Used in the Teams name - can be empty
-    
-    if ($schoolYearLength -eq 2) { $format = "yy" } else { $format = "yyyy" }
-    
-    $monthcurrent = (Get-Date).Month
-    $yearcurrent = (Get-Date).ToString($format)
-    $yearprevious = ([int]$yearcurrent - 1).ToString()
-    $yearnext = ([int]$yearcurrent + 1).ToString()
-    
-    If ($monthcurrent -ge 8) {
-        $schoolyear = $yearcurrent + $schoolYearSeperator + $yearnext
-    }
-    else {
-        $schoolyear = $yearprevious + $schoolYearSeperator + $yearcurrent
-    }
-    return $schoolyear
-}
 #endregion functions
 
 try {
+    # Setup Connection with Entra/Exo
     $actionMessage = 'connecting to MS-Entra'
     $certificate = Get-MSEntraCertificate
     $entraToken = Get-MSEntraAccessToken -Certificate $certificate
@@ -183,40 +163,50 @@ try {
     # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
     $headers.Add('ConsistencyLevel', 'eventual')
 
-    $actionMessage = 'Retrieving permissions'
-    Write-Information $actionMessage
-
-    $baseUriM365Group = "https://graph.microsoft.com/v1.0/groups?`$select=id,displayName,resourceProvisioningOptions&`$top=999"
-    $nextLink = $baseUriM365Group
-
-    $schoolyear = Get-SchoolYear
-
+    # API docs: https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
+    $actionMessage = "querying accounts"
+    # Query only Members, as we only want to import members group memberships to HelloID, and not guest user accounts
+    $uri = "https://graph.microsoft.com/v1.0/users?`$filter=userType eq 'Member'&`$select=$fields&`$top=999"
+    $accountCount = 0
     do {
-        $getMicrosoftEntraIDM365GroupsSplatParams = @{
-            Uri     = $nextLink
-            Headers = $headers
-            Method  = 'GET'
-            Verbose = $false
+        $getAccountsSplatParams = @{
+            Uri         = $uri
+            Headers     = $headers
+            Method      = 'GET'
+            ContentType = 'application/json; charset=utf-8'
+            Verbose     = $false
+            ErrorAction = "Stop"
         }
-        $microsoftEntraIDM365Groups = Invoke-RestMethod @getMicrosoftEntraIDM365GroupsSplatParams
-
-        foreach ($permission in ($microsoftEntraIDM365Groups.value | Where-Object { $_.resourceProvisioningOptions -contains "Team" -and $_.displayName -like "*_$($schoolyear)" })) {
-            $displayName = "$($permission.displayName)"
-            $displayName = $displayName.substring(0, [System.Math]::Min(100, $displayName.Length))
-            $outputContext.Permissions.Add(
-                @{
-                    DisplayName    = $displayName
-                    Identification = @{
-                        Id = $permission.id
-                    }
+        $existingAccounts = Invoke-RestMethod @getAccountsSplatParams
+        foreach ($account in $existingAccounts.value) {
+            $actionMessage = "querying account group members"
+            # Make sure the displayName has a value of max 100 char
+            $groupsUri = "https://graph.microsoft.com/v1.0/users/$($account.id)/memberOf/microsoft.graph.group?`$count=true&`$select=id,displayName,groupTypes,mailEnabled,securityEnabled,onPremisesSyncEnabled&`$filter=not(groupTypes/any(c:c eq 'DynamicMembership')) and ((mailEnabled eq false and securityEnabled eq true and onPremisesSyncEnabled eq null) or groupTypes/any(c:c eq 'Unified'))"
+            do {
+                $getAccountMembershipsSplatParams = @{
+                    Uri         = $groupsUri
+                    Headers     = $headers
+                    Method      = 'GET'
+                    ContentType = 'application/json; charset=utf-8'
+                    Verbose     = $false
+                    ErrorAction = "Stop"
                 }
-            )
+                $groupMembersResponse = Invoke-RestMethod @getAccountMembershipsSplatParams
+                foreach ($entraIDGroup in $groupMembersResponse.value) {                                   
+                    Write-Output @(
+                        @{
+                            AccountReferences   = @( $account.id )
+                            PermissionReference = @{ Id = $entraIDGroup.id }                        
+                        }
+                    )
+                }
+                $groupsUri = $groupMembersResponse.'@odata.nextLink'
+            } while ($groupsUri)
+            $accountCount++
         }
-        $nextLink = $microsoftEntraIDM365Groups.'@odata.nextLink'
-    } while (-not [string]::IsNullOrEmpty($nextLink))
-
-
-    
+        $uri = $existingAccounts.'@odata.nextLink'
+    } while ($uri)
+    Write-Information "Successfully queried memberships for [$accountCount] existing accounts"
 }
 catch {
     $ex = $PSItem

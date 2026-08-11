@@ -6,8 +6,12 @@
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
-#region functions
+# Department can't be empty and should be set to $null
+if ($actionContext.Data.PSObject.Properties.Name -contains 'department' -and [string]::IsNullOrWhiteSpace($actionContext.Data.department)) {
+    $actionContext.Data.department = $null
+}
 
+#region functions
 function Resolve-MS-Entra-ExoError {
     [CmdletBinding()]
     param (

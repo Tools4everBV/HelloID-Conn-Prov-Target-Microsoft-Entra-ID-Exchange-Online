@@ -185,6 +185,8 @@ try {
     # API docs: https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying accounts"
     $uri = "https://graph.microsoft.com/v1.0/users?`$select=$fields&`$top=999"
+    # Example how to only filter on 'Member' or 'Guest'
+    # $uri = "https://graph.microsoft.com/v1.0/users?`$filter=userType eq 'Member'&`$select=$fields&`$top=999"
     $accountCount = 0
     do {
         $getAccountsSplatParams = @{

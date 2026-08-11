@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.5.3] - 04-08-2026
+
+### Added
+- Import examples how to filter data for account and memberships
+
+### Fixed
+- Added private key check in scripts where it was missing
+
+### Changed
+- Empty or whitespace `department` values are now converted to `$null`, allowing the field to be cleared correctly instead of placing a whitespace.
+
 ## [2.5.2] - 30-07-2026
 ### Fixed
 - **correlateOnly/create.ps1**: Changed correlation value from `accountFieldValue` to `personFieldValue` to support Governance correlation scenarios correctly.
