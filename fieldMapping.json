@@ -188,7 +188,7 @@
     },
     {
       "Name": "department",
-      "Description": "The name of the department in which the user works.\nMaximum length is 64 characters.\nNote: as the minimum length is 1 character, this is a complex mapping to handle empty values as a space.",
+      "Description": "The name of the department in which the user works.\nMaximum length is 64 characters.",
       "Type": "Text",
       "MappingActions": [
         {
@@ -196,8 +196,8 @@
             "Create",
             "Update"
           ],
-          "MappingMode": "Complex",
-          "Value": "\"// Mapping logic to generate the department and ensure it is always 1 character at least (empty value will become a space)\\r\\nfunction generateDepartment() {\\r\\n    let department = Person.PrimaryContract.Department.DisplayName;\\r\\n\\r\\n    // Ensure the department field is at least 1 character long\\r\\n    if (department === null || department.length < 1) {\\r\\n        department = ' ';\\r\\n    }\\r\\n\\r\\n    return department;\\r\\n}\\r\\n\\r\\ngenerateDepartment();\"",
+          "MappingMode": "Field",
+          "Value": "\"Person.PrimaryContract.Department.DisplayName\"",
           "UsedInNotifications": false,
           "StoreInAccountData": false
         }
