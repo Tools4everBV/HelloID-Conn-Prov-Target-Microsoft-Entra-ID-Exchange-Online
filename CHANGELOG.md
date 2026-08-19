@@ -2,7 +2,17 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
-## [2.5.4] - 11-08-2026
+## [2.5.5] - 2026-08-19
+
+### Added
+- **correlateOnly/delete.ps1**: Added support for deleting cloud-only accounts via Reconciliation. The script validates that accounts are not synchronized from on-premises Active Directory before allowing deletion.
+- **correlateOnly/disable.ps1**: Added support for disabling cloud-only accounts via Reconciliation. The script validates that accounts are not synchronized from on-premises Active Directory before allowing the disable action.
+- **correlateOnly/fieldMapping.json**: Added `onPremisesSyncEnabled` as a read-only attribute to determine whether an account is synchronized from on-premises AD. This attribute is used by the delete and disable scripts to prevent actions on synced accounts.
+
+### Changed
+- **correlateOnly**: Delete and disable actions now only execute when triggered from Reconciliation (`$actionContext.Origin -eq 'Reconciliation'`). Regular provisioning flows are unaffected.
+
+## [2.5.4] - 2026-08-11
 
 ### Fixed
 - Fixed an issue where import scripts without field mapping added a trailing whitespace character to `accountEnabled`.
