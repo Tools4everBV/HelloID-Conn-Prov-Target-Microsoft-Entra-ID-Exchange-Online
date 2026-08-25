@@ -187,6 +187,9 @@ try {
     $uri = "https://graph.microsoft.com/v1.0/users?`$select=$fields&`$top=999"
     # Example how to only filter on 'Member' or 'Guest'
     # $uri = "https://graph.microsoft.com/v1.0/users?`$filter=userType eq 'Member'&`$select=$fields&`$top=999"
+    # Example how to exclude on-premises synced users (users synced from AD will not be imported)
+    # This can be useful to avoid reconciliation errors on accounts managed by the AD connector
+    # $uri = "https://graph.microsoft.com/v1.0/users?`$filter=onPremisesSyncEnabled ne true&`$select=$fields&`$top=999&`$count=true"
     $accountCount = 0
     do {
         $getAccountsSplatParams = @{
@@ -218,7 +221,7 @@ try {
                 AccountReference = $account.id
                 DisplayName      = $displayName
                 UserName         = $userName
-                Enabled          = $false # When using correlate only, no account access is granted. This should be false for the import report.
+                Enabled          = $account.accountEnabled
                 Data             = $account
             }
             $accountCount++
