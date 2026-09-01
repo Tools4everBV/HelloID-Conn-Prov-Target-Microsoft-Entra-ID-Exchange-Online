@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file. The format 
 ### Changed
 - **correlateOnly**: Delete and disable actions now only execute when triggered from Reconciliation (`$actionContext.Origin -eq 'Reconciliation'`). Regular provisioning flows are unaffected.
 
+### Fixed
+- Manager not found catch was not working when running the connector on-prem (PSv5)
+
 ## [2.5.4] - 2026-08-11
 
 ### Fixed
