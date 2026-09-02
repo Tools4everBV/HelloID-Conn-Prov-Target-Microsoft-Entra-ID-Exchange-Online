@@ -330,7 +330,7 @@ try {
 
     $actionList = [System.Collections.Generic.list[object]]::new()
     # Compare Entra Account
-    if ($null -ne $correlatedAccountEntra) {
+    if ($null -ne $correlatedAccountEntra -and -not[String]::IsNullOrEmpty($actionContext.Data)) {
         $actionMessage = 'Compare Entra Account'
         $actionContextDataFiltered = $actionContext.Data | Select-Object * -ExcludeProperty passwordProfile*, exchangeOnline*
         $splatComparePropertiesEntra = @{
