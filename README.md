@@ -38,6 +38,7 @@
       - [4. Manager Lookup (if configured)](#4-manager-lookup-if-configured)
       - [5. Determine Actions](#5-determine-actions)
       - [6. Execute Actions](#6-execute-actions)
+    - [Correlate only mode](#correlate-only-mode)
     - [Inviting Guest Accounts](#inviting-guest-accounts)
   - [Development resources](#development-resources)
     - [GraphAPI documentation](#graphapi-documentation)
@@ -54,6 +55,10 @@ The _HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online_ connector supp
 > [!NOTE]
 > When using MS Exchange Online, please note that licensing must be configured separately, through group-based licensing.
 > 
+
+> [!TIP]
+> If accounts in Microsoft Entra ID are already provisioned and maintained by another authoritative process (for example, an on-premises Active Directory synced through Microsoft Entra Connect, AADConnect or DirSync), you likely don't need full account lifecycle management. See [Correlate only mode](#correlate-only-mode) for a lightweight setup that only correlates existing accounts.
+
 ## Supported  features
 
 The following features are available:
@@ -61,6 +66,7 @@ The following features are available:
 | Feature                                   | Supported | Actions / Type                                                                               | Remarks                             |
 | ----------------------------------------- | --------- | -------------------------------------------------------------------------------------------- | ----------------------------------- |
 | **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                                                      |                                     |
+| **Correlate only**                        | ✅         | Correlate                                                                                     | Alternative setup, see [Correlate only mode](#correlate-only-mode) |
 | **Permissions**                           | ✅         | Groups (static and sub permissions), Phone, Email authentication and perUserMfaState methods |                                     |
 | **Resources**                             | ✅         | Groups, Teams                                                                                | Only available for groups and teams |
 | **Uniqueness**                            | ✅         | -                                                                                            |                                     |
@@ -300,6 +306,12 @@ Actions are executed in order:
 - `UpdateAccountExo`: Updates mailbox properties in Exchange Online, with special handling to skip no-op updates.
 - `CorrelateAccount`: Correlates both the MS Entra and Exchange Online account(s).
 - `SetManager`: Placeholder for setting manager relationship, not implemented.
+
+### Correlate only mode
+
+If accounts in Microsoft Entra ID are already created and maintained by another authoritative process (for example, an on-premises Active Directory that is synced to Entra ID through Microsoft Entra Connect, AADConnect or DirSync), this connector does not need to create, update, enable, disable or delete accounts. In that scenario, use the **correlate only** setup in the [`correlateOnly/`](./correlateOnly/) folder, which only correlates existing Entra ID accounts to persons in HelloID and imports them, so permissions can still be managed.
+
+See [correlateOnly/README.md](./correlateOnly/README.md) for the setup instructions and limitations compared to the full CRUD connector.
 
 ### Inviting Guest Accounts
 
