@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.6.0] - 02-09-2026
+
+### Fixed
+- **update.ps1**: Fixed a bug where the Entra account comparison was skipped whenever `actionContext.Data` was not empty but did not contain any mapped fields, preventing `None` mapped fields (e.g. `userPrincipalName`) from being read and stored in the account data.
+
+### Added
+- **correlateOnly/README.md**: Added documentation for the correlate only setup: when to use it, how to set it up, its limitations compared to the full CRUD connector, how to add the regular update/enable/disable/delete scripts on top of it, and how to keep read-only fields in sync using a `None` mapping.
+- **README.md**: Added `Correlate only` to the supported features table and a pointer to `correlateOnly/README.md`.
+
 ## [2.5.5] - 2026-08-19
 
 ### Added

@@ -38,11 +38,8 @@
       - [4. Manager Lookup (if configured)](#4-manager-lookup-if-configured)
       - [5. Determine Actions](#5-determine-actions)
       - [6. Execute Actions](#6-execute-actions)
+    - [Correlate only mode](#correlate-only-mode)
     - [Inviting Guest Accounts](#inviting-guest-accounts)
-    - [Correlate-Only Mode](#correlate-only-mode)
-      - [Key Features](#key-features)
-      - [Reconciliation Behavior](#reconciliation-behavior)
-      - [Use Cases](#use-cases)
       - [Configuration](#configuration)
   - [Development resources](#development-resources)
     - [GraphAPI documentation](#graphapi-documentation)
@@ -59,19 +56,24 @@ The _HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online_ connector supp
 > [!NOTE]
 > When using MS Exchange Online, please note that licensing must be configured separately, through group-based licensing.
 > 
+
+> [!TIP]
+> If accounts in Microsoft Entra ID are already provisioned and maintained by another authoritative process (for example, an on-premises Active Directory synced through Microsoft Entra Connect, AADConnect or DirSync), you likely don't need full account lifecycle management. See [Correlate only mode](#correlate-only-mode) for a lightweight setup that only correlates existing accounts.
+
 ## Supported  features
 
 The following features are available:
 
-| Feature                                   | Supported | Actions / Type                                                                               | Remarks                             |
-| ----------------------------------------- | --------- | -------------------------------------------------------------------------------------------- | ----------------------------------- |
-| **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                                                      |                                     |
-| **Permissions**                           | ✅         | Groups (static and sub permissions), Phone, Email authentication and perUserMfaState methods |                                     |
-| **Resources**                             | ✅         | Groups, Teams                                                                                | Only available for groups and teams |
-| **Uniqueness**                            | ✅         | -                                                                                            |                                     |
-| **Entitlement Import: Accounts**          | ✅         | -                                                                                            |                                     |
-| **Entitlement Import: Permissions**       | ✅         | Groups                                                                                       | Only available for groups           |
-| **Governance Reconciliation Resolutions** | ✅         | Reconciliation  [Governance Remarks](#governance-remarks)                                    |                                     |
+| Feature                                   | Supported | Actions / Type                                                                               | Remarks                                                            |
+| ----------------------------------------- | --------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                                                      |                                                                    |
+| **Correlate only**                        | ✅         | Correlate                                                                                    | Alternative setup, see [Correlate only mode](#correlate-only-mode) |
+| **Permissions**                           | ✅         | Groups (static and sub permissions), Phone, Email authentication and perUserMfaState methods |                                                                    |
+| **Resources**                             | ✅         | Groups, Teams                                                                                | Only available for groups and teams                                |
+| **Uniqueness**                            | ✅         | -                                                                                            |                                                                    |
+| **Entitlement Import: Accounts**          | ✅         | -                                                                                            |                                                                    |
+| **Entitlement Import: Permissions**       | ✅         | Groups                                                                                       | Only available for groups                                          |
+| **Governance Reconciliation Resolutions** | ✅         | Reconciliation  [Governance Remarks](#governance-remarks)                                    |                                                                    |
 
 ## Getting started
 
@@ -306,6 +308,12 @@ Actions are executed in order:
 - `CorrelateAccount`: Correlates both the MS Entra and Exchange Online account(s).
 - `SetManager`: Placeholder for setting manager relationship, not implemented.
 
+### Correlate only mode
+
+If accounts in Microsoft Entra ID are already created and maintained by another authoritative process (for example, an on-premises Active Directory that is synced to Entra ID through Microsoft Entra Connect, AADConnect or DirSync), this connector does not need to create, update, enable, disable or delete accounts. In that scenario, use the **correlate only** setup in the [`correlateOnly/`](./correlateOnly/) folder, which only correlates existing Entra ID accounts to persons in HelloID and imports them, so permissions can still be managed.
+
+See [correlateOnly/README.md](./correlateOnly/README.md) for the setup instructions and limitations compared to the full CRUD connector.
+
 ### Inviting Guest Accounts
 
 - "Invite as Guest" is supported by using a separate target connector.
@@ -313,29 +321,6 @@ Actions are executed in order:
 - Manager can be set of an invited guest but is not based on a manager reference. The manager is searched by the corresponding `employeeId`, cause mostly the manager reference is not available as a `GuestInvited` account.
 - User credentials and e-mailaddress are based on an external e-mailaddress of the employee
 - Additional application permissions are required: `User.Invite.All`: Invite guest users to the organization.
-
-### Correlate-Only Mode
-
-The `correlateOnly` folder contains a specialized variant of the connector designed for environments where accounts are managed by on-premises Active Directory and synchronized to Microsoft Entra ID. In this scenario, HelloID only correlates to existing accounts and manages permissions, without creating or updating account attributes.
-
-#### Key Features
-
-- **Correlation Only**: The create script (`correlateOnly/create.ps1`) only correlates to existing Entra ID accounts and does not create new accounts or update attributes.
-- **Reconciliation Support**: Unlike the standard correlation-only approach, this variant includes `delete.ps1` and `disable.ps1` scripts that support Reconciliation actions for cloud-only accounts.
-
-#### Reconciliation Behavior
-
-The delete and disable scripts in the correlateOnly folder are specifically designed to handle Reconciliation scenarios:
-
-- **Trigger**: Actions are only executed when `$actionContext.Origin -eq 'Reconciliation'`. Regular provisioning flows are unaffected.
-- **Cloud-Only Accounts**: The scripts check the `onPremisesSyncEnabled` property to determine if an account is synchronized from on-premises AD.
-  - If `onPremisesSyncEnabled = true`: The script throws an error preventing the action ("Cannot delete/disable user synchronized from on-premises Active Directory").
-  - If `onPremisesSyncEnabled = false` or `null`: The action is executed on the cloud-only account.
-
-#### Use Cases
-
-- **Permission Management**: HelloID manages group memberships and other permissions while AD manages account lifecycle for synced accounts.
-- **Reconciliation Cleanup**: Automatically disable or delete cloud-only accounts that are no longer needed, while protecting synced accounts from accidental changes.
 
 #### Configuration
 
