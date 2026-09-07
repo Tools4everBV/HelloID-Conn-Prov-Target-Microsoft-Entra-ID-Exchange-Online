@@ -40,10 +40,6 @@
       - [6. Execute Actions](#6-execute-actions)
     - [Correlate only mode](#correlate-only-mode)
     - [Inviting Guest Accounts](#inviting-guest-accounts)
-    - [Correlate-Only Mode](#correlate-only-mode)
-      - [Key Features](#key-features)
-      - [Reconciliation Behavior](#reconciliation-behavior)
-      - [Use Cases](#use-cases)
       - [Configuration](#configuration)
   - [Development resources](#development-resources)
     - [GraphAPI documentation](#graphapi-documentation)
@@ -68,16 +64,16 @@ The _HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Exchange-Online_ connector supp
 
 The following features are available:
 
-| Feature                                   | Supported | Actions / Type                                                                               | Remarks                             |
-| ----------------------------------------- | --------- | -------------------------------------------------------------------------------------------- | ----------------------------------- |
-| **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                                                      |                                     |
-| **Correlate only**                        | ✅         | Correlate                                                                                     | Alternative setup, see [Correlate only mode](#correlate-only-mode) |
-| **Permissions**                           | ✅         | Groups (static and sub permissions), Phone, Email authentication and perUserMfaState methods |                                     |
-| **Resources**                             | ✅         | Groups, Teams                                                                                | Only available for groups and teams |
-| **Uniqueness**                            | ✅         | -                                                                                            |                                     |
-| **Entitlement Import: Accounts**          | ✅         | -                                                                                            |                                     |
-| **Entitlement Import: Permissions**       | ✅         | Groups                                                                                       | Only available for groups           |
-| **Governance Reconciliation Resolutions** | ✅         | Reconciliation  [Governance Remarks](#governance-remarks)                                    |                                     |
+| Feature                                   | Supported | Actions / Type                                                                               | Remarks                                                            |
+| ----------------------------------------- | --------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| **Account Lifecycle**                     | ✅         | Create, Update, Enable, Disable, Delete                                                      |                                                                    |
+| **Correlate only**                        | ✅         | Correlate                                                                                    | Alternative setup, see [Correlate only mode](#correlate-only-mode) |
+| **Permissions**                           | ✅         | Groups (static and sub permissions), Phone, Email authentication and perUserMfaState methods |                                                                    |
+| **Resources**                             | ✅         | Groups, Teams                                                                                | Only available for groups and teams                                |
+| **Uniqueness**                            | ✅         | -                                                                                            |                                                                    |
+| **Entitlement Import: Accounts**          | ✅         | -                                                                                            |                                                                    |
+| **Entitlement Import: Permissions**       | ✅         | Groups                                                                                       | Only available for groups                                          |
+| **Governance Reconciliation Resolutions** | ✅         | Reconciliation  [Governance Remarks](#governance-remarks)                                    |                                                                    |
 
 ## Getting started
 
@@ -325,29 +321,6 @@ See [correlateOnly/README.md](./correlateOnly/README.md) for the setup instructi
 - Manager can be set of an invited guest but is not based on a manager reference. The manager is searched by the corresponding `employeeId`, cause mostly the manager reference is not available as a `GuestInvited` account.
 - User credentials and e-mailaddress are based on an external e-mailaddress of the employee
 - Additional application permissions are required: `User.Invite.All`: Invite guest users to the organization.
-
-### Correlate-Only Mode
-
-The `correlateOnly` folder contains a specialized variant of the connector designed for environments where accounts are managed by on-premises Active Directory and synchronized to Microsoft Entra ID. In this scenario, HelloID only correlates to existing accounts and manages permissions, without creating or updating account attributes.
-
-#### Key Features
-
-- **Correlation Only**: The create script (`correlateOnly/create.ps1`) only correlates to existing Entra ID accounts and does not create new accounts or update attributes.
-- **Reconciliation Support**: Unlike the standard correlation-only approach, this variant includes `delete.ps1` and `disable.ps1` scripts that support Reconciliation actions for cloud-only accounts.
-
-#### Reconciliation Behavior
-
-The delete and disable scripts in the correlateOnly folder are specifically designed to handle Reconciliation scenarios:
-
-- **Trigger**: Actions are only executed when `$actionContext.Origin -eq 'Reconciliation'`. Regular provisioning flows are unaffected.
-- **Cloud-Only Accounts**: The scripts check the `onPremisesSyncEnabled` property to determine if an account is synchronized from on-premises AD.
-  - If `onPremisesSyncEnabled = true`: The script throws an error preventing the action ("Cannot delete/disable user synchronized from on-premises Active Directory").
-  - If `onPremisesSyncEnabled = false` or `null`: The action is executed on the cloud-only account.
-
-#### Use Cases
-
-- **Permission Management**: HelloID manages group memberships and other permissions while AD manages account lifecycle for synced accounts.
-- **Reconciliation Cleanup**: Automatically disable or delete cloud-only accounts that are no longer needed, while protecting synced accounts from accidental changes.
 
 #### Configuration
 

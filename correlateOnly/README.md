@@ -7,8 +7,9 @@
   - [When to use this mode](#when-to-use-this-mode)
   - [Setting up the target system](#setting-up-the-target-system)
   - [What this mode does (and does not) do](#what-this-mode-does-and-does-not-do)
+  - [Reconciliation behavior](#reconciliation-behavior)
   - [Limitations compared to the full CRUD connector](#limitations-compared-to-the-full-crud-connector)
-  - [Adding regular lifecycle scripts (update, enable, disable, delete)](#adding-regular-lifecycle-scripts-update-enable-disable-delete)
+  - [Adding regular lifecycle scripts (update and enable)](#adding-regular-lifecycle-scripts-update-and-enable)
   - [Keeping read-only fields in sync with a None mapping](#keeping-read-only-fields-in-sync-with-a-none-mapping)
 
 ## When to use this mode
@@ -19,7 +20,8 @@ HelloID then only needs to:
 - Correlate existing Entra ID accounts to persons.
 - Import them, so permissions and entitlements can still be managed through HelloID.
 
-Creating, updating, enabling, disabling or deleting the account itself is not needed.
+
+Creating, updating or enabling the account itself is not needed in the default correlate only flow. Disabling and deleting are only supported for Reconciliation actions on cloud-only accounts, as described below.
 
 ## Setting up the target system
 
@@ -27,6 +29,8 @@ Create a **separate** target system in HelloID and only import the files from th
 
 - `configuration.json`
 - `create.ps1`
+- `delete.ps1`
+- `disable.ps1`
 - `fieldMapping.json`
 - `import.ps1`
 
@@ -40,31 +44,44 @@ Next, configure the scripts from the [`permissions/`](../permissions/) folder fo
 
 - `create.ps1` does **not** create a new account. It looks up an existing account in Microsoft Entra ID using the configured [correlation configuration](../README.md#correlation-configuration) and correlates it to the person. If no account, or more than one account, is found, the action fails.
 - `import.ps1` imports the correlated accounts, so they are visible for entitlement/permission assignment and reconciliation.
+- `disable.ps1` and `delete.ps1` only process actions that originate from Reconciliation. They protect AD synced accounts and only disable or delete cloud-only accounts.
 - `fieldMapping.json` only maps `id` (used as the account reference), `employeeId` (used for correlation) and `userPrincipalName`. All mappings use the `None` mapping mode, meaning the values are only read from Entra ID and stored in HelloID, they are never written back.
-- There is no `update.ps1`, `enable.ps1`, `disable.ps1` or `delete.ps1` in this folder, since account lifecycle changes are typically handled by the source that manages the account in Entra ID (e.g. on-premises AD). These regular scripts from the root of the repository are optional and can be added to the same target system when needed, see [Adding regular lifecycle scripts](#adding-regular-lifecycle-scripts-update-enable-disable-delete).
+- There is no `update.ps1` or `enable.ps1` in this folder, since regular account lifecycle changes are typically handled by the source that manages the account in Entra ID (e.g. on-premises AD). These regular scripts from the root of the repository are optional and can be added to the same target system when needed, see [Adding regular lifecycle scripts](#adding-regular-lifecycle-scripts-update-and-enable).
 - Permission scripts in the [`permissions/`](../permissions/) folder can still be used on top of a correlate only target system, since they only require the account reference produced by `create.ps1`.
+
+## Reconciliation behavior
+
+The `disable.ps1` and `delete.ps1` scripts in this folder are specifically designed for Reconciliation scenarios. Regular provisioning flows are unaffected, because the scripts only execute their action when `$actionContext.Origin -eq 'Reconciliation'`.
+
+During a Reconciliation action, the scripts retrieve the correlated Entra ID account and check the `onPremisesSyncEnabled` property:
+
+- When `onPremisesSyncEnabled` is `true`, the account is synchronized from on-premises Active Directory. The script stops with an error to prevent accidental lifecycle changes to synced accounts.
+- When `onPremisesSyncEnabled` is `false` or `null`, the account is treated as cloud-only and the requested Reconciliation action is executed.
+
+This makes the correlate only variant suitable for environments where HelloID manages permissions for AD synced accounts, while still allowing Reconciliation cleanup for cloud-only accounts that should be disabled or deleted.
 
 ## Limitations compared to the full CRUD connector
 
-| Aspect                    | Correlate only                                              | Full CRUD (root of the repository)                         |
-| ------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| Create account            | ❌ Not supported, the account must already exist              | ✅ Creates the account in Entra ID (and optionally Exchange Online) |
-| Update account            | ⚠️ Optional, not added by default, see [Adding regular lifecycle scripts](#adding-regular-lifecycle-scripts-update-enable-disable-delete) | ✅ Supported                                                   |
-| Enable/Disable account    | ⚠️ Optional, not added by default, see [Adding regular lifecycle scripts](#adding-regular-lifecycle-scripts-update-enable-disable-delete) | ✅ Supported                                                   |
-| Delete account            | ❌ Not supported for AD synced accounts, see [Adding regular lifecycle scripts](#adding-regular-lifecycle-scripts-update-enable-disable-delete) | ✅ Supported                                                   |
-| Exchange Online           | ❌ Not supported                                               | ✅ Supported (optional)                                        |
-| Permissions/entitlements  | ✅ Supported                                                   | ✅ Supported                                                   |
-| Import                    | ✅ Supported                                                   | ✅ Supported                                                   |
+| Aspect                   | Correlate only                                                                                                              | Full CRUD (root of the repository)                               |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Create account           | ❌ Not supported, the account must already exist                                                                             | ✅ Creates the account in Entra ID (and optionally Exchange Online) |
+| Update account           | ⚠️ Optional, not added by default, see [Adding regular lifecycle scripts](#adding-regular-lifecycle-scripts-update-and-enable) | ✅ Supported                                                       |
+| Enable account           | ⚠️ Optional, not added by default, see [Adding regular lifecycle scripts](#adding-regular-lifecycle-scripts-update-and-enable) | ✅ Supported                                                       |
+| Disable account          | ⚠️ Reconciliation only, and only for cloud-only accounts                                                                      | ✅ Supported                                                       |
+| Delete account           | ⚠️ Reconciliation only, and only for cloud-only accounts                                                                      | ✅ Supported                                                       |
+| Exchange Online          | ❌ Not supported                                                                                                             | ✅ Supported (optional)                                            |
+| Permissions/entitlements | ✅ Supported                                                                                                                 | ✅ Supported                                                       |
+| Import                   | ✅ Supported                                                                                                                 | ✅ Supported                                                       |
 
-## Adding regular lifecycle scripts (update, enable, disable, delete)
+## Adding regular lifecycle scripts (update and enable)
 
-The `update.ps1`, `enable.ps1`, `disable.ps1` and `delete.ps1` scripts from the root of the repository work with a correlate only target system: add them to the same target system alongside `create.ps1` and `import.ps1` from this folder.
+The `update.ps1` and `enable.ps1` scripts from the root of the repository work with a correlate only target system: add them to the same target system alongside the scripts from this folder.
 
 This is useful when you need to manage a **cloud-only** attribute that isn't synchronized from your on-premises AD, for example `ageGroup`. This only works for properties that aren't driven by the AD sync, e.g. `employeeHireDate` can **not** be managed this way, since Microsoft Entra Connect will overwrite it again with the value from AD on the next sync. Only map properties in `fieldMapping.json` that are actually cloud-only.
 
-`enable.ps1` and `disable.ps1` also work, but for AD synced accounts, keep in mind that a following Microsoft Entra Connect sync cycle will overwrite `accountEnabled` again with the value from AD.
+`enable.ps1` also works, but for AD synced accounts, keep in mind that a following Microsoft Entra Connect sync cycle will overwrite `accountEnabled` again with the value from AD.
 
-`delete.ps1` does **not** work for AD synced accounts: Microsoft Entra ID rejects the delete call outright for accounts that are managed through directory synchronization. Deleting an AD synced account must be done by removing it in the source AD.
+Do not use the regular root `disable.ps1` or `delete.ps1` for AD synced correlate only accounts. Use the `disable.ps1` and `delete.ps1` scripts from this folder when you need Reconciliation cleanup: they explicitly block AD synced accounts and only process cloud-only accounts. Deleting an AD synced account must be done by removing it in the source AD.
 
 ## Keeping read-only fields in sync with a None mapping
 
