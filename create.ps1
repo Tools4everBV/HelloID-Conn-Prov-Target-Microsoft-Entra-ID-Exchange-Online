@@ -291,7 +291,7 @@ try {
                 $null = Invoke-RestMethod @splatGetEntraManager
             }
             catch {
-                if ($_.Exception.StatusCode -eq 404) {
+                if ($_.Exception.Response.StatusCode -eq 404) {
                     throw "MS-Entra-Exo Manager account with accountReference: [$($actionContext.References.ManagerAccount)] could not be found, possibly indicating that it could be deleted"
                 }
                 throw $_

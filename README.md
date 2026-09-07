@@ -39,6 +39,11 @@
       - [5. Determine Actions](#5-determine-actions)
       - [6. Execute Actions](#6-execute-actions)
     - [Inviting Guest Accounts](#inviting-guest-accounts)
+    - [Correlate-Only Mode](#correlate-only-mode)
+      - [Key Features](#key-features)
+      - [Reconciliation Behavior](#reconciliation-behavior)
+      - [Use Cases](#use-cases)
+      - [Configuration](#configuration)
   - [Development resources](#development-resources)
     - [GraphAPI documentation](#graphapi-documentation)
     - [ExO documentation](#exo-documentation)
@@ -308,6 +313,40 @@ Actions are executed in order:
 - Manager can be set of an invited guest but is not based on a manager reference. The manager is searched by the corresponding `employeeId`, cause mostly the manager reference is not available as a `GuestInvited` account.
 - User credentials and e-mailaddress are based on an external e-mailaddress of the employee
 - Additional application permissions are required: `User.Invite.All`: Invite guest users to the organization.
+
+### Correlate-Only Mode
+
+The `correlateOnly` folder contains a specialized variant of the connector designed for environments where accounts are managed by on-premises Active Directory and synchronized to Microsoft Entra ID. In this scenario, HelloID only correlates to existing accounts and manages permissions, without creating or updating account attributes.
+
+#### Key Features
+
+- **Correlation Only**: The create script (`correlateOnly/create.ps1`) only correlates to existing Entra ID accounts and does not create new accounts or update attributes.
+- **Reconciliation Support**: Unlike the standard correlation-only approach, this variant includes `delete.ps1` and `disable.ps1` scripts that support Reconciliation actions for cloud-only accounts.
+
+#### Reconciliation Behavior
+
+The delete and disable scripts in the correlateOnly folder are specifically designed to handle Reconciliation scenarios:
+
+- **Trigger**: Actions are only executed when `$actionContext.Origin -eq 'Reconciliation'`. Regular provisioning flows are unaffected.
+- **Cloud-Only Accounts**: The scripts check the `onPremisesSyncEnabled` property to determine if an account is synchronized from on-premises AD.
+  - If `onPremisesSyncEnabled = true`: The script throws an error preventing the action ("Cannot delete/disable user synchronized from on-premises Active Directory").
+  - If `onPremisesSyncEnabled = false` or `null`: The action is executed on the cloud-only account.
+
+#### Use Cases
+
+- **Permission Management**: HelloID manages group memberships and other permissions while AD manages account lifecycle for synced accounts.
+- **Reconciliation Cleanup**: Automatically disable or delete cloud-only accounts that are no longer needed, while protecting synced accounts from accidental changes.
+
+#### Configuration
+
+To use the correlate-only variant:
+
+1. Use the scripts from the `correlateOnly` folder instead of the root folder scripts.
+2. Configure correlation as described in [Correlation configuration](#correlation-configuration).
+3. The `onPremisesSyncEnabled` attribute is automatically included in the field mapping and does not require additional configuration.
+
+> [!NOTE]
+> Enable scripts are not included in the correlateOnly variant, as enabling an account requires entitlement management and enforcement, which is not supported in correlation-only mode.
 
 ## Development resources
 
