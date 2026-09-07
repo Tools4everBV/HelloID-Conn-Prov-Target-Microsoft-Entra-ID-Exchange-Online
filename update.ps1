@@ -319,7 +319,7 @@ try {
             $previousManager = Invoke-RestMethod @splatGetEntraAccountManager
         }
         catch {
-            if ($_.ErrorDetails.Message -like "*Resource *manager* does not exist or one of its queried reference-property objects are not present.*") {
+            if ($_.Exception.Response.StatusCode -eq 404) {
                 $previousManager = $null
             }
             else {

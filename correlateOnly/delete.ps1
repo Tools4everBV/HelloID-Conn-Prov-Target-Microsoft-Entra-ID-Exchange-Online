@@ -1,8 +1,8 @@
-#################################################
-# HelloID-Conn-Prov-Target-Microsoft-Entra-ID-Import
-# Correlate to account
+##################################################
+# HelloID-Conn-Prov-Target-MS-Entra-Exo-Delete
+# Correlate only - Reconciliation support
 # PowerShell V2
-#################################################
+##################################################
 
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
@@ -22,20 +22,19 @@ function Resolve-MS-Entra-ExoError {
             ErrorDetails     = $ErrorObject.Exception.Message
             FriendlyMessage  = $ErrorObject.Exception.Message
         }
-
-        try {
-            if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
-                $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message | ConvertFrom-Json
-            }
-            elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
-                if ($null -ne $ErrorObject.Exception.Response) {
-                    $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
-                    if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
-                        $httpErrorObj.ErrorDetails = $streamReaderResponse
-                    }
+        if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
+            $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message
+        }
+        elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
+            if ($null -ne $ErrorObject.Exception.Response) {
+                $streamReaderResponse = [System.IO.StreamReader]::new($ErrorObject.Exception.Response.GetResponseStream()).ReadToEnd()
+                if (-not [string]::IsNullOrEmpty($streamReaderResponse)) {
+                    $httpErrorObj.ErrorDetails = $streamReaderResponse
                 }
             }
-            $errorDetailsObject = $httpErrorObj.ErrorDetails
+        }
+        try {
+            $errorDetailsObject = ($httpErrorObj.ErrorDetails | ConvertFrom-Json)
             if ($errorDetailsObject.error_description) {
                 $httpErrorObj.FriendlyMessage = $errorDetailsObject.error_description
             }
@@ -48,6 +47,7 @@ function Resolve-MS-Entra-ExoError {
             else {
                 $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
             }
+
         }
         catch {
             $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
@@ -152,96 +152,87 @@ function Get-MSEntraCertificate {
 #endregion functions
 
 try {
-    Write-Information 'Starting target account import'
-
-    # Define properties to query
-    $importFields = $($actionContext.ImportFields)
-    $importFields = $importFields | Where-Object { $_ -notlike 'exchangeonline.*' }
-    $importFields = $importFields -replace '\..*', ''
-    $importFields = $importFields | Select-Object -Unique
-
-    # Add mandatory fields for HelloID to query and return
-    if ('id' -notin $importFields) { $importFields += 'id' }
-    if ('accountEnabled' -notin $importFields) { $importFields += 'accountEnabled' }
-    if ('displayName' -notin $importFields) { $importFields += 'displayName' }
-    if ('userPrincipalName' -notin $importFields) { $importFields += 'userPrincipalName' }
-
-    # Convert to a ',' string
-    $fields = $importFields -join ','
-    Write-Information "Querying fields [$fields]"
-
-    # Setup Connection with Entra/Exo
-    $actionMessage = 'connecting to MS-Entra'
-    $certificate = Get-MSEntraCertificate
-    $entraToken = Get-MSEntraAccessToken -Certificate $certificate
-
-    $headers = [System.Collections.Generic.Dictionary[[String], [String]]]::new()
-    $headers.Add('Authorization', "Bearer $entraToken")
-    $headers.Add('Accept', 'application/json')
-    $headers.Add('Content-Type', 'application/json')
-    # Needed to filter on specific attributes (https://docs.microsoft.com/en-us/graph/aad-advanced-queries)
-    $headers.Add('ConsistencyLevel', 'eventual')
-
-    # API docs: https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
-    $actionMessage = "querying accounts"
-    $uri = "https://graph.microsoft.com/v1.0/users?`$select=$fields&`$top=999"
-    # Example how to only filter on 'Member' or 'Guest'
-    # $uri = "https://graph.microsoft.com/v1.0/users?`$filter=userType eq 'Member'&`$select=$fields&`$top=999"
-    # Example how to exclude on-premises synced users (users synced from AD will not be imported)
-    # This can be useful to avoid reconciliation errors on accounts managed by the AD connector
-    # $uri = "https://graph.microsoft.com/v1.0/users?`$filter=onPremisesSyncEnabled ne true&`$select=$fields&`$top=999&`$count=true"
-    $accountCount = 0
-    do {
-        $getAccountsSplatParams = @{
-            Uri         = $uri
-            Headers     = $headers
-            Method      = 'GET'
-            ContentType = 'application/json; charset=utf-8'
-            Verbose     = $false
-            ErrorAction = "Stop"
+    # Only process delete action when triggered from Reconciliation
+    if ($actionContext.Origin -eq 'Reconciliation') {
+        # Verify if [aRef] has a value
+        if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
+            throw 'The account reference could not be found'
         }
-        $existingAccounts = Invoke-RestMethod @getAccountsSplatParams
-        foreach ($account in $existingAccounts.value) {
-            # Make sure the DisplayName has a value
-            if (-not([string]::IsNullOrEmpty($account.displayName))) {
-                $displayName = $($account.displayName).substring(0, [System.Math]::Min(100, $($account.displayName).Length))
+
+        # Setup Connection with Entra ID
+        $actionMessage = 'connecting to MS-Entra'
+        $certificate = Get-MSEntraCertificate
+        $entraToken = Get-MSEntraAccessToken -Certificate $certificate
+
+        Write-Information 'Verifying if a MS-Entra account exists'
+
+        # Get Entra account with onPremisesSyncEnabled property
+        $actionMessage = 'querying MS-Entra account'
+        try {
+            $correlatedAccountEntra = $null
+            $splatGetEntraUser = @{
+                Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)?`$select=id,userPrincipalName,onPremisesSyncEnabled"
+                Method  = 'GET'
+                Headers = @{'Authorization' = "Bearer $($entraToken)" }
+            }
+            $correlatedAccountEntra = Invoke-RestMethod @splatGetEntraUser -Verbose:$false
+            $outputContext.PreviousData = $correlatedAccountEntra | Select-Object -Property *
+        }
+        catch {
+            if ($_.Exception.Response.StatusCode -eq 404) {
+                $correlatedAccountEntra = $null
             }
             else {
-                $displayName = $account.id
+                throw $_
             }
-            # Make sure the Username has a value
-            if (-not([string]::IsNullOrEmpty($account.userPrincipalName))) {
-                $userName = $($account.userPrincipalName).substring(0, [System.Math]::Min(100, $($account.userPrincipalName).Length))
-            }
-            else {
-                $userName = $account.id
-            }
-            # Return the result
-            Write-Output @{
-                AccountReference = $account.id
-                DisplayName      = $displayName
-                UserName         = $userName
-                Enabled          = $account.accountEnabled
-                Data             = $account
-            }
-            $accountCount++
         }
-        $uri = $existingAccounts.'@odata.nextLink'
-    } while ($uri)
-    Write-Information "Successfully queried [$accountCount] existing accounts"
+
+        if ($null -eq $correlatedAccountEntra) {
+            throw 'MS-Entra account not found'
+        }
+
+        # Check if account is synchronized from on-premises
+        $actionMessage = "deleting MS-Entra account with AccountReference [$($actionContext.References.Account)]"
+        if ($correlatedAccountEntra.onPremisesSyncEnabled -eq $true) {
+            throw "Cannot delete user synchronized from on-premises Active Directory"
+        }
+
+        # Delete cloud-only account
+        Write-Information "Deleting cloud-only MS-Entra account with accountReference: [$($actionContext.References.Account)]"
+
+        $splatDeleteEntraAccount = @{
+            Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)"
+            Method      = 'DELETE'
+            ContentType = 'application/json;charset=utf-8'
+            Headers     = @{'Authorization' = "Bearer $($entraToken)" }
+        }
+
+        if (-not($actionContext.DryRun -eq $true)) {
+            $null = Invoke-RestMethod @splatDeleteEntraAccount -Verbose:$false
+        }
+
+        $outputContext.Success = $true
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+                Message = 'Delete MS-Entra account was successful (reconciliation)'
+                IsError = $false
+            })
+    }
 }
 catch {
+    $outputContext.success = $false
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {
         $errorObj = Resolve-MS-Entra-ExoError -ErrorObject $ex
         $auditMessage = "Error $($actionMessage). Error: $($errorObj.FriendlyMessage)"
-        $warningMessage = "Error at Line [$($errorObj.ScriptLineNumber)]: $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
+        Write-Warning "Error at Line '$($errorObj.ScriptLineNumber)': $($errorObj.Line). Error: $($errorObj.ErrorDetails)"
     }
     else {
         $auditMessage = "Error $($actionMessage). Error: $($ex.Exception.Message)"
-        $warningMessage = "Error at Line [$($ex.InvocationInfo.ScriptLineNumber)]: $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
+        Write-Warning "Error at Line '$($ex.InvocationInfo.ScriptLineNumber)': $($ex.InvocationInfo.Line). Error: $($ex.Exception.Message)"
     }
-    Write-Warning $warningMessage
-    Write-Error $auditMessage
+    $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Message = $auditMessage
+            IsError = $true
+        })
 }

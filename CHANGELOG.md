@@ -11,7 +11,20 @@ All notable changes to this project will be documented in this file. The format 
 - **correlateOnly/README.md**: Added documentation for the correlate only setup: when to use it, how to set it up, its limitations compared to the full CRUD connector, how to add the regular update/enable/disable/delete scripts on top of it, and how to keep read-only fields in sync using a `None` mapping.
 - **README.md**: Added `Correlate only` to the supported features table and a pointer to `correlateOnly/README.md`.
 
-## [2.5.4] - 11-08-2026
+## [2.5.5] - 2026-08-19
+
+### Added
+- **correlateOnly/delete.ps1**: Added support for deleting cloud-only accounts via Reconciliation. The script validates that accounts are not synchronized from on-premises Active Directory before allowing deletion.
+- **correlateOnly/disable.ps1**: Added support for disabling cloud-only accounts via Reconciliation. The script validates that accounts are not synchronized from on-premises Active Directory before allowing the disable action.
+- **correlateOnly/fieldMapping.json**: Added `onPremisesSyncEnabled` as a read-only attribute to determine whether an account is synchronized from on-premises AD. This attribute is used by the delete and disable scripts to prevent actions on synced accounts.
+
+### Changed
+- **correlateOnly**: Delete and disable actions now only execute when triggered from Reconciliation (`$actionContext.Origin -eq 'Reconciliation'`). Regular provisioning flows are unaffected.
+
+### Fixed
+- Manager not found catch was not working when running the connector on-prem (PSv5)
+
+## [2.5.4] - 2026-08-11
 
 ### Fixed
 - Fixed an issue where import scripts without field mapping added a trailing whitespace character to `accountEnabled`.

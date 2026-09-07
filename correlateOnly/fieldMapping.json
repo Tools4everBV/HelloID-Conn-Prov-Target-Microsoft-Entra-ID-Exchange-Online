@@ -48,6 +48,22 @@
           "StoreInAccountData": true
         }
       ]
+    },
+    {
+      "Name": "onPremisesSyncEnabled",
+      "Description": "[Read-Only] Indicates whether this user is synchronized from an on-premises directory (true), no longer synchronized (false), or has never been synchronized (null).\nUsed to determine if the account can be deleted or disabled via Reconciliation.",
+      "Type": "Text",
+      "MappingActions": [
+        {
+          "MapForActions": [
+            "Create"
+          ],
+          "MappingMode": "None",
+          "Value": "null",
+          "UsedInNotifications": false,
+          "StoreInAccountData": true
+        }
+      ]
     }
   ],
   "UniqueFieldNames": []
