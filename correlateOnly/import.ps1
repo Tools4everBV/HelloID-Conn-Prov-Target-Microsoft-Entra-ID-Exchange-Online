@@ -163,6 +163,7 @@ try {
     # Add mandatory fields for HelloID to query and return
     if ('id' -notin $importFields) { $importFields += 'id' }
     if ('accountEnabled' -notin $importFields) { $importFields += 'accountEnabled' }
+    if ('onPremisesSyncEnabled' -notin $importFields) { $importFields += 'onPremisesSyncEnabled' }
     if ('displayName' -notin $importFields) { $importFields += 'displayName' }
     if ('userPrincipalName' -notin $importFields) { $importFields += 'userPrincipalName' }
 
@@ -216,12 +217,19 @@ try {
             else {
                 $userName = $account.id
             }
+            # On-premises synced accounts are managed by the AD connector, so report them as disabled here to avoid reconciliation errors
+            if ($account.onPremisesSyncEnabled -eq $true) {
+                $enabled = $false
+            }
+            else {
+                $enabled = $account.accountEnabled
+            }
             # Return the result
             Write-Output @{
                 AccountReference = $account.id
                 DisplayName      = $displayName
                 UserName         = $userName
-                Enabled          = $account.accountEnabled
+                Enabled          = $enabled
                 Data             = $account
             }
             $accountCount++
