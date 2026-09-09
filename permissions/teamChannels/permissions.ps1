@@ -286,7 +286,6 @@ try {
     }
 }
 catch {
-    Write-Warning ($_ | ConvertTo-Json)
     $ex = $PSItem
     if ($($ex.Exception.GetType().FullName -eq 'Microsoft.PowerShell.Commands.HttpResponseException') -or
         $($ex.Exception.GetType().FullName -eq 'System.Net.WebException')) {

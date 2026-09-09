@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.6.1] - 2026-09-08
+
+### Changed
+- **correlateOnly/import.ps1**: Accounts with `onPremisesSyncEnabled -eq $true` are now always imported with `Enabled = false`, regardless of their actual `accountEnabled` value in Entra ID. This prevents reconciliation actions/errors on AD synced accounts, since that insight is already provided by the AD connector.
+
+### Fixed
+- **permissions/teamChannels/grantPermission.ps1**: Removed a leftover debug `Write-Warning` that dumped the request body.
+- **permissions/teamChannels/importPermission.ps1**: Removed a leftover debug `Write-Warning` that dumped the raw error object at the start of the catch block.
+- **permissions/teamChannels/permissions.ps1**: Removed a leftover debug `Write-Warning` that dumped the raw error object at the start of the catch block.
+- **README.md**: Removed a misplaced `Configuration` subsection under `Inviting Guest Accounts` that actually described the correlate only setup, which is already covered by `Correlate only mode` and `correlateOnly/README.md`.
+
 ## [2.6.0] - 02-09-2026
 
 ### Fixed

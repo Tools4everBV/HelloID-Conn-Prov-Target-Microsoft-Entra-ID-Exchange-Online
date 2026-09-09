@@ -43,9 +43,9 @@ Next, configure the scripts from the [`permissions/`](../permissions/) folder fo
 ## What this mode does (and does not) do
 
 - `create.ps1` does **not** create a new account. It looks up an existing account in Microsoft Entra ID using the configured [correlation configuration](../README.md#correlation-configuration) and correlates it to the person. If no account, or more than one account, is found, the action fails.
-- `import.ps1` imports the correlated accounts, so they are visible for entitlement/permission assignment and reconciliation.
+- `import.ps1` imports the correlated accounts, so they are visible for entitlement/permission assignment and reconciliation. For accounts with `onPremisesSyncEnabled -eq $true`, the imported `Enabled` state is always reported as `false`, regardless of the actual `accountEnabled` value in Entra ID. This avoids reconciliation actions/errors on AD synced accounts, that insight is already provided by the AD connector.
 - `disable.ps1` and `delete.ps1` only process actions that originate from Reconciliation. They protect AD synced accounts and only disable or delete cloud-only accounts.
-- `fieldMapping.json` only maps `id` (used as the account reference), `employeeId` (used for correlation) and `userPrincipalName`. All mappings use the `None` mapping mode, meaning the values are only read from Entra ID and stored in HelloID, they are never written back.
+- `fieldMapping.json` only maps `id` (used as the account reference), `employeeId` (used for correlation), `userPrincipalName` and `onPremisesSyncEnabled`. All mappings use the `None` mapping mode, meaning the values are only read from Entra ID and stored in HelloID, they are never written back.
 - There is no `update.ps1` or `enable.ps1` in this folder, since regular account lifecycle changes are typically handled by the source that manages the account in Entra ID (e.g. on-premises AD). These regular scripts from the root of the repository are optional and can be added to the same target system when needed, see [Adding regular lifecycle scripts](#adding-regular-lifecycle-scripts-update-and-enable).
 - Permission scripts in the [`permissions/`](../permissions/) folder can still be used on top of a correlate only target system, since they only require the account reference produced by `create.ps1`.
 

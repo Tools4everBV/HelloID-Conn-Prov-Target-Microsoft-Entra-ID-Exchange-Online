@@ -198,8 +198,6 @@ try {
     }
 
     if (-Not($actionContext.DryRun -eq $true)) {
-        Write-Warning ($grantPermissionSplatParams | ConvertTo-Json)
-
         $grantedPermission = Invoke-RestMethod @grantPermissionSplatParams
 
         $outputContext.success = $true
