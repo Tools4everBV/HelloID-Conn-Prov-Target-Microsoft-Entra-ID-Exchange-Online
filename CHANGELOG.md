@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.6.2] - 2026-09-09
+
+### Hotfix
+- Disable and Delete script failed when `Origin` = `enforcement`
+- 
 ## [2.6.1] - 2026-09-08
 
 ### Changed

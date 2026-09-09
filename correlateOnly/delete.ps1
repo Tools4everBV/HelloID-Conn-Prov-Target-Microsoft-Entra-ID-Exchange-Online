@@ -217,6 +217,10 @@ try {
                 IsError = $false
             })
     }
+    else {
+        Write-Information "Skipping action. [Origin] = [$($actionContext.Origin)]"
+        $outputContext.Success = $true
+    }
 }
 catch {
     $outputContext.success = $false
