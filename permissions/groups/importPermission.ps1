@@ -148,6 +148,116 @@ function Get-MSEntraCertificate {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
+
+function Invoke-MSEntraBatchRequest {
+    <#
+        Executes GET requests for a list of items against the Microsoft Graph $batch endpoint
+        (https://learn.microsoft.com/en-us/graph/json-batching), instead of one request per item.
+        Returns a hashtable keyed by the (0-based) index of $Items, where each value is the
+        (paginated, fully resolved) 'value' array of that item's response.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [array]
+        $Items,
+
+        [Parameter(Mandatory)]
+        [hashtable]
+        $Headers,
+
+        [Parameter(Mandatory)]
+        [scriptblock]
+        $UriScriptBlock,
+
+        [int]
+        $BatchSize = 20
+    )
+    process {
+        $resultsByIndex = @{}
+
+        for ($i = 0; $i -lt $Items.Count; $i += $BatchSize) {
+            $batchItems = $Items[$i..[Math]::Min($i + $BatchSize - 1, $Items.Count - 1)]
+
+            $batchRequests = [System.Collections.Generic.List[object]]::new()
+            for ($j = 0; $j -lt $batchItems.Count; $j++) {
+                [void]$batchRequests.Add(
+                    @{
+                        id     = "$j"
+                        method = 'GET'
+                        url    = (& $UriScriptBlock $batchItems[$j])
+                    }
+                )
+            }
+
+            $batchSplatParams = @{
+                Uri         = 'https://graph.microsoft.com/v1.0/$batch'
+                Headers     = $Headers
+                Method      = 'POST'
+                Body        = (@{ requests = $batchRequests } | ConvertTo-Json -Depth 10)
+                ContentType = 'application/json; charset=utf-8'
+                Verbose     = $false
+                ErrorAction = 'Stop'
+            }
+
+            $batchResponse = $null
+            $retryCount = 0
+            $maxRetries = 3
+            do {
+                try {
+                    $batchResponse = Invoke-RestMethod @batchSplatParams
+                    $retryCount = 0
+                }
+                catch {
+                    if ($_.Exception.Response.StatusCode -eq 429 -or $_.Exception.Response.StatusCode -eq 504) {
+                        $retryCount++
+                        Write-Warning "Retry [$retryCount] for batch request covering items [$i..$($i + $batchItems.Count - 1)]"
+                        Start-Sleep -Seconds ($retryCount * 5)
+                        continue
+                    }
+                    else {
+                        throw
+                    }
+                }
+            } while ($retryCount -gt 0 -and $retryCount -le $maxRetries)
+
+            if ($retryCount -gt $maxRetries) {
+                throw "Rate limit exceeded for batch request covering items [$i..$($i + $batchItems.Count - 1)]."
+            }
+
+            foreach ($response in $batchResponse.responses) {
+                $itemIndex = $i + [int]$response.id
+                if ($response.status -ge 200 -and $response.status -lt 300) {
+                    $values = [System.Collections.ArrayList]@()
+                    if ($null -ne $response.body.value) {
+                        [void]$values.AddRange(@($response.body.value))
+                    }
+                    $nextLink = $response.body.'@odata.nextLink'
+                    while (-not [string]::IsNullOrEmpty($nextLink)) {
+                        $paginationSplatParams = @{
+                            Uri         = $nextLink
+                            Headers     = $Headers
+                            Method      = 'GET'
+                            ContentType = 'application/json; charset=utf-8'
+                            Verbose     = $false
+                            ErrorAction = 'Stop'
+                        }
+                        $paginationResponse = Invoke-RestMethod @paginationSplatParams
+                        [void]$values.AddRange(@($paginationResponse.value))
+                        $nextLink = $paginationResponse.'@odata.nextLink'
+                    }
+                    $resultsByIndex[$itemIndex] = $values
+                }
+                else {
+                    Write-Warning "Batch sub-request failed for item at index [$itemIndex]: $($response.body.error.message)"
+                    $resultsByIndex[$itemIndex] = @()
+                }
+            }
+        }
+
+        Write-Output $resultsByIndex
+    }
+}
 #endregion functions
 
 try {
@@ -166,7 +276,7 @@ try {
     # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying M365 groups"
     $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,description&`$top=999"
-    $m365GroupCount = 0
+    $m365Groups = [System.Collections.ArrayList]@()
     do {
         $getM365GroupsSplatParams = @{
             Uri         = $uriGroups
@@ -177,60 +287,56 @@ try {
             ErrorAction = "Stop"
         }
         $m365GroupsResponse = Invoke-RestMethod @getM365GroupsSplatParams
-        foreach ($entraIDGroup in $m365GroupsResponse.value) {
-            $actionMessage = "querying M365 group members"
-            # Make sure the displayName has a value of max 100 char
-            if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
-                $displayName = "M365 Group - $($entraIDGroup.displayName)"
-                $displayName = $($displayName).substring(0, [System.Math]::Min(100, $($displayName).Length))
-            }
-            else {
-                $displayName = "M365 Group - $($entraIDGroup.id)"
-            }
-            # Make sure the description has a value of max 100 char
-            if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
-                $description = $($entraIDGroup.description).substring(0, [System.Math]::Min(100, $($entraIDGroup.description).Length))
-            }
-            else {
-                $description = $null
-            }
-
-            # Only top = 500 to maximize the amount of account references returned to HelloID
-            $uriMembers = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members/microsoft.graph.user?`$select=id&`$top=500"
-            do {
-                $getM365GroupMembershipsSplatParams = @{
-                    Uri         = $uriMembers
-                    Headers     = $headers
-                    Method      = 'GET'
-                    ContentType = 'application/json; charset=utf-8'
-                    Verbose     = $false
-                    ErrorAction = "Stop"
-                }
-                $groupMembersResponse = Invoke-RestMethod @getM365GroupMembershipsSplatParams
-                $accountReferences = $groupMembersResponse.value.id
-
-                if ($accountReferences.count -gt 0) {
-                    Write-Output @(
-                        @{
-                            AccountReferences   = @( $accountReferences )
-                            PermissionReference = @{ Id = $entraIDGroup.id }                        
-                            Description         = $description
-                            DisplayName         = $displayName
-                        }
-                    )
-                }
-                $uriMembers = $groupMembersResponse.'@odata.nextLink'
-            } while ($uriMembers)
-            $m365GroupCount++
-        }
+        [void]$m365Groups.AddRange($m365GroupsResponse.value)
         $uriGroups = $m365GroupsResponse.'@odata.nextLink'
     } while ($uriGroups)
+
+    # Using the Batch API to retrieve group members for all groups in batches of 20 (https://learn.microsoft.com/en-us/graph/json-batching)
+    $actionMessage = "querying M365 group members"
+    $m365GroupMembers = Invoke-MSEntraBatchRequest -Items $m365Groups -Headers $headers -UriScriptBlock {
+        param($group)
+        "/groups/$($group.id)/members/microsoft.graph.user?`$select=id&`$top=999"
+    }
+
+    $m365GroupCount = 0
+    for ($i = 0; $i -lt $m365Groups.Count; $i++) {
+        $entraIDGroup = $m365Groups[$i]
+
+        # Make sure the displayName has a value of max 100 char
+        if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
+            $displayName = "M365 Group - $($entraIDGroup.displayName)"
+            $displayName = $($displayName).substring(0, [System.Math]::Min(100, $($displayName).Length))
+        }
+        else {
+            $displayName = "M365 Group - $($entraIDGroup.id)"
+        }
+        # Make sure the description has a value of max 100 char
+        if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
+            $description = $($entraIDGroup.description).substring(0, [System.Math]::Min(100, $($entraIDGroup.description).Length))
+        }
+        else {
+            $description = $null
+        }
+
+        $accountReferences = $m365GroupMembers[$i].id
+        if ($accountReferences.count -gt 0) {
+            Write-Output @(
+                @{
+                    AccountReferences   = @( $accountReferences )
+                    PermissionReference = @{ Id = $entraIDGroup.id }
+                    Description         = $description
+                    DisplayName         = $displayName
+                }
+            )
+        }
+        $m365GroupCount++
+    }
     Write-Information "Successfully queried [$m365GroupCount] existing m365 groups"
 
     # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying security groups"
     $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=NOT(groupTypes/any(c:c+eq+'DynamicMembership')) and onPremisesSyncEnabled eq null and mailEnabled eq false and securityEnabled eq true&`$select=id,displayName,description&`$top=999"
-    $securityGroupCount = 0
+    $securityGroups = [System.Collections.ArrayList]@()
     do {
         $getSecurityGroupsSplatParams = @{
             Uri         = $uriGroups
@@ -241,54 +347,50 @@ try {
             ErrorAction = "Stop"
         }
         $securityGroupsResponse = Invoke-RestMethod @getSecurityGroupsSplatParams
-        foreach ($entraIDGroup in $securityGroupsResponse.value) {
-            $actionMessage = "querying security group members"
-            # Make sure the displayName has a value of max 100 char
-            if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
-                $displayName = "Security Group - $($entraIDGroup.displayName)"
-                $displayName = $($displayName).substring(0, [System.Math]::Min(100, $($displayName).Length))
-            }
-            else {
-                $displayName = "Security Group - $($entraIDGroup.id)"
-            }
-            # Make sure the description has a value of max 100 char
-            if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
-                $description = $($entraIDGroup.description).substring(0, [System.Math]::Min(100, $($entraIDGroup.description).Length))
-            }
-            else {
-                $description = $null
-            }
-
-            # Only top = 500 to maximize the amount of account references returned to HelloID
-            $uriMembers = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/members/microsoft.graph.user?`$select=id&`$top=500"
-            do {
-                $getSecurityGroupMembershipsSplatParams = @{
-                    Uri         = $uriMembers
-                    Headers     = $headers
-                    Method      = 'GET'
-                    ContentType = 'application/json; charset=utf-8'
-                    Verbose     = $false
-                    ErrorAction = "Stop"
-                }
-                $groupMembersResponse = Invoke-RestMethod @getSecurityGroupMembershipsSplatParams
-                $accountReferences = $groupMembersResponse.value.id
-
-                if ($accountReferences.count -gt 0) {
-                    Write-Output @(
-                        @{
-                            AccountReferences   = @( $accountReferences )
-                            PermissionReference = @{ Id = $entraIDGroup.id }                        
-                            Description         = $description
-                            DisplayName         = $displayName
-                        }
-                    )
-                }
-                $uriMembers = $groupMembersResponse.'@odata.nextLink'
-            } while ($uriMembers)
-            $securityGroupCount++
-        }
+        [void]$securityGroups.AddRange($securityGroupsResponse.value)
         $uriGroups = $securityGroupsResponse.'@odata.nextLink'
     } while ($uriGroups)
+
+    # Using the Batch API to retrieve group members for all groups in batches of 20 (https://learn.microsoft.com/en-us/graph/json-batching)
+    $actionMessage = "querying security group members"
+    $securityGroupMembers = Invoke-MSEntraBatchRequest -Items $securityGroups -Headers $headers -UriScriptBlock {
+        param($group)
+        "/groups/$($group.id)/members/microsoft.graph.user?`$select=id&`$top=999"
+    }
+
+    $securityGroupCount = 0
+    for ($i = 0; $i -lt $securityGroups.Count; $i++) {
+        $entraIDGroup = $securityGroups[$i]
+
+        # Make sure the displayName has a value of max 100 char
+        if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
+            $displayName = "Security Group - $($entraIDGroup.displayName)"
+            $displayName = $($displayName).substring(0, [System.Math]::Min(100, $($displayName).Length))
+        }
+        else {
+            $displayName = "Security Group - $($entraIDGroup.id)"
+        }
+        # Make sure the description has a value of max 100 char
+        if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
+            $description = $($entraIDGroup.description).substring(0, [System.Math]::Min(100, $($entraIDGroup.description).Length))
+        }
+        else {
+            $description = $null
+        }
+
+        $accountReferences = $securityGroupMembers[$i].id
+        if ($accountReferences.count -gt 0) {
+            Write-Output @(
+                @{
+                    AccountReferences   = @( $accountReferences )
+                    PermissionReference = @{ Id = $entraIDGroup.id }
+                    Description         = $description
+                    DisplayName         = $displayName
+                }
+            )
+        }
+        $securityGroupCount++
+    }
     Write-Information "Successfully queried [$securityGroupCount] existing security groups"
 }
 catch {

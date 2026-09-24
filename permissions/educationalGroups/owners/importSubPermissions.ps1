@@ -153,6 +153,116 @@ function Get-MSEntraCertificate {
     }
 }
 
+function Invoke-MSEntraBatchRequest {
+    <#
+        Executes GET requests for a list of items against the Microsoft Graph $batch endpoint
+        (https://learn.microsoft.com/en-us/graph/json-batching), instead of one request per item.
+        Returns a hashtable keyed by the (0-based) index of $Items, where each value is the
+        (paginated, fully resolved) 'value' array of that item's response.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [array]
+        $Items,
+
+        [Parameter(Mandatory)]
+        [hashtable]
+        $Headers,
+
+        [Parameter(Mandatory)]
+        [scriptblock]
+        $UriScriptBlock,
+
+        [int]
+        $BatchSize = 20
+    )
+    process {
+        $resultsByIndex = @{}
+
+        for ($i = 0; $i -lt $Items.Count; $i += $BatchSize) {
+            $batchItems = $Items[$i..[Math]::Min($i + $BatchSize - 1, $Items.Count - 1)]
+
+            $batchRequests = [System.Collections.Generic.List[object]]::new()
+            for ($j = 0; $j -lt $batchItems.Count; $j++) {
+                [void]$batchRequests.Add(
+                    @{
+                        id     = "$j"
+                        method = 'GET'
+                        url    = (& $UriScriptBlock $batchItems[$j])
+                    }
+                )
+            }
+
+            $batchSplatParams = @{
+                Uri         = 'https://graph.microsoft.com/v1.0/$batch'
+                Headers     = $Headers
+                Method      = 'POST'
+                Body        = (@{ requests = $batchRequests } | ConvertTo-Json -Depth 10)
+                ContentType = 'application/json; charset=utf-8'
+                Verbose     = $false
+                ErrorAction = 'Stop'
+            }
+
+            $batchResponse = $null
+            $retryCount = 0
+            $maxRetries = 3
+            do {
+                try {
+                    $batchResponse = Invoke-RestMethod @batchSplatParams
+                    $retryCount = 0
+                }
+                catch {
+                    if ($_.Exception.Response.StatusCode -eq 429 -or $_.Exception.Response.StatusCode -eq 504) {
+                        $retryCount++
+                        Write-Warning "Retry [$retryCount] for batch request covering items [$i..$($i + $batchItems.Count - 1)]"
+                        Start-Sleep -Seconds ($retryCount * 5)
+                        continue
+                    }
+                    else {
+                        throw
+                    }
+                }
+            } while ($retryCount -gt 0 -and $retryCount -le $maxRetries)
+
+            if ($retryCount -gt $maxRetries) {
+                throw "Rate limit exceeded for batch request covering items [$i..$($i + $batchItems.Count - 1)]."
+            }
+
+            foreach ($response in $batchResponse.responses) {
+                $itemIndex = $i + [int]$response.id
+                if ($response.status -ge 200 -and $response.status -lt 300) {
+                    $values = [System.Collections.ArrayList]@()
+                    if ($null -ne $response.body.value) {
+                        [void]$values.AddRange(@($response.body.value))
+                    }
+                    $nextLink = $response.body.'@odata.nextLink'
+                    while (-not [string]::IsNullOrEmpty($nextLink)) {
+                        $paginationSplatParams = @{
+                            Uri         = $nextLink
+                            Headers     = $Headers
+                            Method      = 'GET'
+                            ContentType = 'application/json; charset=utf-8'
+                            Verbose     = $false
+                            ErrorAction = 'Stop'
+                        }
+                        $paginationResponse = Invoke-RestMethod @paginationSplatParams
+                        [void]$values.AddRange(@($paginationResponse.value))
+                        $nextLink = $paginationResponse.'@odata.nextLink'
+                    }
+                    $resultsByIndex[$itemIndex] = $values
+                }
+                else {
+                    Write-Warning "Batch sub-request failed for item at index [$itemIndex]: $($response.body.error.message)"
+                    $resultsByIndex[$itemIndex] = @()
+                }
+            }
+        }
+
+        Write-Output $resultsByIndex
+    }
+}
+
 function Get-SchoolYear {
     # Calculate school year dependencies
     # School year definition in numbers of 4 or 2 digits
@@ -216,25 +326,17 @@ try {
         $uri = $response.'@odata.nextLink'
     } while ($uri)
 
+    # Using the Batch API to retrieve group owners for all groups in batches of 20 (https://learn.microsoft.com/en-us/graph/json-batching)
     $actionMessage = "querying group owners"
-    foreach ($entraIDGroup in $entraIDGroups) {  
-        $entraIDGroupOwners = @()
-        $uri = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/owners?`$select=id"
-        do {
-            $getOwnersSplatParams = @{
-                Uri         = $uri
-                Headers     = $headers
-                Method      = 'GET'
-                ContentType = 'application/json; charset=utf-8'
-                Verbose     = $false
-                ErrorAction = "Stop"
-            }
-            $response = Invoke-RestMethod @getOwnersSplatParams
-            $users = $response.value | Where-Object { $_.'@odata.type' -eq "#microsoft.graph.user" -and $_.id -ne $actionContext.Configuration.ownerGuid }
-            $entraIDGroupOwners += $users
-            $uri = $response.'@odata.nextLink'
-        } while ($uri)
-        $numberOfAccounts = $(($entraIDGroupOwners | Measure-Object).Count)   
+    $entraIDGroupsOwners = Invoke-MSEntraBatchRequest -Items $entraIDGroups -Headers $headers -UriScriptBlock {
+        param($group)
+        "/groups/$($group.id)/owners?`$select=id&`$top=999"
+    }
+
+    for ($groupIndex = 0; $groupIndex -lt $entraIDGroups.Count; $groupIndex++) {
+        $entraIDGroup = $entraIDGroups[$groupIndex]
+        $entraIDGroupOwners = @($entraIDGroupsOwners[$groupIndex] | Where-Object { $_.'@odata.type' -eq "#microsoft.graph.user" -and $_.id -ne $actionContext.Configuration.ownerGuid })
+        $numberOfAccounts = $(($entraIDGroupOwners | Measure-Object).Count)
 
         # Make sure the displayName has a value of max 100 char
         if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {

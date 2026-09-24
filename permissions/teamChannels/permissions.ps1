@@ -150,6 +150,116 @@ function Get-MSEntraCertificate {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
+
+function Invoke-MSEntraBatchRequest {
+    <#
+        Executes GET requests for a list of items against the Microsoft Graph $batch endpoint
+        (https://learn.microsoft.com/en-us/graph/json-batching), instead of one request per item.
+        Returns a hashtable keyed by the (0-based) index of $Items, where each value is the
+        (paginated, fully resolved) 'value' array of that item's response.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [array]
+        $Items,
+
+        [Parameter(Mandatory)]
+        [hashtable]
+        $Headers,
+
+        [Parameter(Mandatory)]
+        [scriptblock]
+        $UriScriptBlock,
+
+        [int]
+        $BatchSize = 20
+    )
+    process {
+        $resultsByIndex = @{}
+
+        for ($i = 0; $i -lt $Items.Count; $i += $BatchSize) {
+            $batchItems = $Items[$i..[Math]::Min($i + $BatchSize - 1, $Items.Count - 1)]
+
+            $batchRequests = [System.Collections.Generic.List[object]]::new()
+            for ($j = 0; $j -lt $batchItems.Count; $j++) {
+                [void]$batchRequests.Add(
+                    @{
+                        id     = "$j"
+                        method = 'GET'
+                        url    = (& $UriScriptBlock $batchItems[$j])
+                    }
+                )
+            }
+
+            $batchSplatParams = @{
+                Uri         = 'https://graph.microsoft.com/v1.0/$batch'
+                Headers     = $Headers
+                Method      = 'POST'
+                Body        = (@{ requests = $batchRequests } | ConvertTo-Json -Depth 10)
+                ContentType = 'application/json; charset=utf-8'
+                Verbose     = $false
+                ErrorAction = 'Stop'
+            }
+
+            $batchResponse = $null
+            $retryCount = 0
+            $maxRetries = 3
+            do {
+                try {
+                    $batchResponse = Invoke-RestMethod @batchSplatParams
+                    $retryCount = 0
+                }
+                catch {
+                    if ($_.Exception.Response.StatusCode -eq 429 -or $_.Exception.Response.StatusCode -eq 504) {
+                        $retryCount++
+                        Write-Warning "Retry [$retryCount] for batch request covering items [$i..$($i + $batchItems.Count - 1)]"
+                        Start-Sleep -Seconds ($retryCount * 5)
+                        continue
+                    }
+                    else {
+                        throw
+                    }
+                }
+            } while ($retryCount -gt 0 -and $retryCount -le $maxRetries)
+
+            if ($retryCount -gt $maxRetries) {
+                throw "Rate limit exceeded for batch request covering items [$i..$($i + $batchItems.Count - 1)]."
+            }
+
+            foreach ($response in $batchResponse.responses) {
+                $itemIndex = $i + [int]$response.id
+                if ($response.status -ge 200 -and $response.status -lt 300) {
+                    $values = [System.Collections.ArrayList]@()
+                    if ($null -ne $response.body.value) {
+                        [void]$values.AddRange(@($response.body.value))
+                    }
+                    $nextLink = $response.body.'@odata.nextLink'
+                    while (-not [string]::IsNullOrEmpty($nextLink)) {
+                        $paginationSplatParams = @{
+                            Uri         = $nextLink
+                            Headers     = $Headers
+                            Method      = 'GET'
+                            ContentType = 'application/json; charset=utf-8'
+                            Verbose     = $false
+                            ErrorAction = 'Stop'
+                        }
+                        $paginationResponse = Invoke-RestMethod @paginationSplatParams
+                        [void]$values.AddRange(@($paginationResponse.value))
+                        $nextLink = $paginationResponse.'@odata.nextLink'
+                    }
+                    $resultsByIndex[$itemIndex] = $values
+                }
+                else {
+                    Write-Warning "Batch sub-request failed for item at index [$itemIndex]: $($response.body.error.message)"
+                    $resultsByIndex[$itemIndex] = @()
+                }
+            }
+        }
+
+        Write-Output $resultsByIndex
+    }
+}
 #endregion functions
 
 try {
@@ -197,62 +307,23 @@ try {
     Write-Information "Queried Microsoft Teams. Result count: $(($microsoftTeams | Measure-Object).Count)"
 
     # Get Teams Channels
+    # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/channel-list?view=graph-rest-1.0&tabs=http
+    # Using the Batch API to retrieve channels for all teams in batches of 20 (https://learn.microsoft.com/en-us/graph/json-batching)
+    $actionMessage = "querying Microsoft Teams Channels"
+    $microsoftTeamsChannelsByTeam = Invoke-MSEntraBatchRequest -Items $microsoftTeams -Headers $headers -UriScriptBlock {
+        param($team)
+        "/teams/$($team.id)/Channels?`$select=id,displayName,membershipType,isArchived&`$filter=membershipType eq 'private' OR membershipType eq 'shared'"
+    }
+
     $microsoftTeamsChannels = [System.Collections.ArrayList]@()
-    foreach ($microsoftTeam in $microsoftTeams) {
-        # Get Microsoft Teams Channels
-        # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/channel-list?view=graph-rest-1.0&tabs=http
-        $actionMessage = "querying Microsoft Teams Channels"
-
-        do {
-            $actionMessage = "querying Microsoft Teams Channels for Team $($microsoftTeam.displayName) ($($microsoftTeam.id))"
-
-            $getMicrosoftTeamsChannelsSplatParams = @{
-                Uri         = "https://graph.microsoft.com/v1.0/teams/$($microsoftTeam.id)/Channels?`$select=id,displayName,membershipType,isArchived&`$filter=membershipType eq 'private' OR membershipType eq 'shared'"
-                Headers     = $headers
-                Method      = "GET"
-                Verbose     = $false
-                ErrorAction = "Stop"
-            }
-            if (-not[string]::IsNullOrEmpty($getMicrosoftTeamsChannelsResult.'@odata.nextLink')) {
-                $getMicrosoftTeamsChannelsSplatParams["Uri"] = $getMicrosoftTeamsChannelsResult.'@odata.nextLink'
-            }
-
-            #Write-Warning ("$($getMicrosoftTeamsChannelsSplatParams.Uri)")
-            $getMicrosoftTeamsChannelsResult = $null
-            $retryCount = 0
-            $maxRetries = 3
-            do{
-                try{
-                    $getMicrosoftTeamsChannelsResult = Invoke-RestMethod @getMicrosoftTeamsChannelsSplatParams
-                    $retryCount = 0
-                }
-                catch {
-                    if($_.Exception.Response.StatusCode -eq 429 -or $_.Exception.Response.StatusCode -eq 504){
-                        $retryCount++
-                        Write-Warning ("retry $retryCount for: $($getMicrosoftTeamsChannelsSplatParams.Uri)")
-                        start-sleep -Seconds ($retryCount * 5) 
-                        continue
-                    }
-                    else {
-                        throw $_
-                    }
-                }
-            } while ($retryCount -gt 0 -and $retryCount -le $maxRetries)
-
-            if($retryCount -gt $maxRetries){
-                throw "Rate limit exceeded."
-            }
-
+    for ($i = 0; $i -lt $microsoftTeams.Count; $i++) {
+        $microsoftTeam = $microsoftTeams[$i]
+        $teamChannels = $microsoftTeamsChannelsByTeam[$i]
+        if ($teamChannels.Count -gt 0) {
             # Add Team details to channel objects
-            $getMicrosoftTeamsChannelsResult.Value | Add-Member @{ Team = $microsoftTeam }
-
-            if ($getMicrosoftTeamsChannelsResult.Value -is [array]) {
-                [void]$microsoftTeamsChannels.AddRange($getMicrosoftTeamsChannelsResult.Value)
-            }
-            else {
-                [void]$microsoftTeamsChannels.Add($getMicrosoftTeamsChannelsResult.Value)
-            }
-        } while (-not[string]::IsNullOrEmpty($getMicrosoftTeamsChannelsResult.'@odata.nextLink'))
+            $teamChannels | Add-Member @{ Team = $microsoftTeam }
+            [void]$microsoftTeamsChannels.AddRange($teamChannels)
+        }
     }
     Write-Information "Queried Microsoft Teams Channels. Result count: $(($microsoftTeamsChannels | Measure-Object).Count)"
 

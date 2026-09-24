@@ -149,6 +149,116 @@ function Get-MSEntraCertificate {
     }
 }
 
+function Invoke-MSEntraBatchRequest {
+    <#
+        Executes GET requests for a list of items against the Microsoft Graph $batch endpoint
+        (https://learn.microsoft.com/en-us/graph/json-batching), instead of one request per item.
+        Returns a hashtable keyed by the (0-based) index of $Items, where each value is the
+        (paginated, fully resolved) 'value' array of that item's response.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [array]
+        $Items,
+
+        [Parameter(Mandatory)]
+        [hashtable]
+        $Headers,
+
+        [Parameter(Mandatory)]
+        [scriptblock]
+        $UriScriptBlock,
+
+        [int]
+        $BatchSize = 20
+    )
+    process {
+        $resultsByIndex = @{}
+
+        for ($i = 0; $i -lt $Items.Count; $i += $BatchSize) {
+            $batchItems = $Items[$i..[Math]::Min($i + $BatchSize - 1, $Items.Count - 1)]
+
+            $batchRequests = [System.Collections.Generic.List[object]]::new()
+            for ($j = 0; $j -lt $batchItems.Count; $j++) {
+                [void]$batchRequests.Add(
+                    @{
+                        id     = "$j"
+                        method = 'GET'
+                        url    = (& $UriScriptBlock $batchItems[$j])
+                    }
+                )
+            }
+
+            $batchSplatParams = @{
+                Uri         = 'https://graph.microsoft.com/v1.0/$batch'
+                Headers     = $Headers
+                Method      = 'POST'
+                Body        = (@{ requests = $batchRequests } | ConvertTo-Json -Depth 10)
+                ContentType = 'application/json; charset=utf-8'
+                Verbose     = $false
+                ErrorAction = 'Stop'
+            }
+
+            $batchResponse = $null
+            $retryCount = 0
+            $maxRetries = 3
+            do {
+                try {
+                    $batchResponse = Invoke-RestMethod @batchSplatParams
+                    $retryCount = 0
+                }
+                catch {
+                    if ($_.Exception.Response.StatusCode -eq 429 -or $_.Exception.Response.StatusCode -eq 504) {
+                        $retryCount++
+                        Write-Warning "Retry [$retryCount] for batch request covering items [$i..$($i + $batchItems.Count - 1)]"
+                        Start-Sleep -Seconds ($retryCount * 5)
+                        continue
+                    }
+                    else {
+                        throw
+                    }
+                }
+            } while ($retryCount -gt 0 -and $retryCount -le $maxRetries)
+
+            if ($retryCount -gt $maxRetries) {
+                throw "Rate limit exceeded for batch request covering items [$i..$($i + $batchItems.Count - 1)]."
+            }
+
+            foreach ($response in $batchResponse.responses) {
+                $itemIndex = $i + [int]$response.id
+                if ($response.status -ge 200 -and $response.status -lt 300) {
+                    $values = [System.Collections.ArrayList]@()
+                    if ($null -ne $response.body.value) {
+                        [void]$values.AddRange(@($response.body.value))
+                    }
+                    $nextLink = $response.body.'@odata.nextLink'
+                    while (-not [string]::IsNullOrEmpty($nextLink)) {
+                        $paginationSplatParams = @{
+                            Uri         = $nextLink
+                            Headers     = $Headers
+                            Method      = 'GET'
+                            ContentType = 'application/json; charset=utf-8'
+                            Verbose     = $false
+                            ErrorAction = 'Stop'
+                        }
+                        $paginationResponse = Invoke-RestMethod @paginationSplatParams
+                        [void]$values.AddRange(@($paginationResponse.value))
+                        $nextLink = $paginationResponse.'@odata.nextLink'
+                    }
+                    $resultsByIndex[$itemIndex] = $values
+                }
+                else {
+                    Write-Warning "Batch sub-request failed for item at index [$itemIndex]: $($response.body.error.message)"
+                    $resultsByIndex[$itemIndex] = @()
+                }
+            }
+        }
+
+        Write-Output $resultsByIndex
+    }
+}
+
 function Get-SchoolYear {
     # Calculate school year dependencies
     # School year definition in numbers of 4 or 2 digits
@@ -191,7 +301,7 @@ try {
     # API docs: https://learn.microsoft.com/en-us/graph/api/group-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying Educational groups"
     $uriGroups = "https://graph.microsoft.com/v1.0/groups?`$filter=groupTypes/any(c:c+eq+'Unified')&`$select=id,displayName,description,resourceProvisioningOptions&`$top=999"
-    $m365GroupCount = 0
+    $educationalGroups = [System.Collections.ArrayList]@()
     do {
         $getM365GroupsSplatParams = @{
             Uri         = $uriGroups
@@ -202,56 +312,51 @@ try {
             ErrorAction = "Stop"
         }
         $m365GroupsResponse = Invoke-RestMethod @getM365GroupsSplatParams
-        #foreach ($entraIDGroup in ($m365GroupsResponse.value | Where-Object { $_.displayName -like "$filter" })) {
-        foreach ($entraIDGroup in ($m365GroupsResponse.value | Where-Object { $_.resourceProvisioningOptions -contains "Team" -and $_.displayName -like "$filter" })) {
-        
-            $actionMessage = "querying Educational group owners"
-            # Make sure the displayName has a value of max 100 char
-            if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
-                $displayName = "$($entraIDGroup.displayName)"
-                $displayName = $($displayName).substring(0, [System.Math]::Min(100, $($displayName).Length))
-            }
-            else {
-                $displayName = "$($entraIDGroup.id)"
-            }
-            # Make sure the description has a value of max 100 char
-            if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
-                $description = $($entraIDGroup.description).substring(0, [System.Math]::Min(100, $($entraIDGroup.description).Length))
-            }
-            else {
-                $description = $null
-            }
-
-            # Only top = 500 to maximize the amount of account references returned to HelloID
-            $uriOwners = "https://graph.microsoft.com/v1.0/groups/$($entraIDGroup.id)/owners/microsoft.graph.user?`$select=id&`$top=500"
-            do {
-                $getM365GroupOwnersSplatParams = @{
-                    Uri         = $uriOwners
-                    Headers     = $headers
-                    Method      = 'GET'
-                    ContentType = 'application/json; charset=utf-8'
-                    Verbose     = $false
-                    ErrorAction = "Stop"
-                }
-                $groupOwnersResponse = Invoke-RestMethod @getM365GroupOwnersSplatParams                
-                $accountReferences = ($groupOwnersResponse.value | Where-Object { $_.id -ne $actionContext.Configuration.ownerGuid }).id
-
-                if ($accountReferences.count -gt 0) {
-                    Write-Output @(
-                        @{
-                            AccountReferences   = @( $accountReferences )
-                            PermissionReference = @{ Id = $entraIDGroup.id }                        
-                            Description         = $description
-                            DisplayName         = $displayName
-                        }
-                    )
-                }
-                $uriOwners = $groupOwnersResponse.'@odata.nextLink'
-            } while ($uriOwners)
-            $m365GroupCount++
-        }
+        #[void]$educationalGroups.AddRange(@($m365GroupsResponse.value | Where-Object { $_.displayName -like "$filter" }))
+        [void]$educationalGroups.AddRange(@($m365GroupsResponse.value | Where-Object { $_.resourceProvisioningOptions -contains "Team" -and $_.displayName -like "$filter" }))
         $uriGroups = $m365GroupsResponse.'@odata.nextLink'
     } while ($uriGroups)
+
+    # Using the Batch API to retrieve group owners for all groups in batches of 20 (https://learn.microsoft.com/en-us/graph/json-batching)
+    $actionMessage = "querying Educational group owners"
+    $educationalGroupOwners = Invoke-MSEntraBatchRequest -Items $educationalGroups -Headers $headers -UriScriptBlock {
+        param($group)
+        "/groups/$($group.id)/owners/microsoft.graph.user?`$select=id&`$top=999"
+    }
+
+    $m365GroupCount = 0
+    for ($i = 0; $i -lt $educationalGroups.Count; $i++) {
+        $entraIDGroup = $educationalGroups[$i]
+
+        # Make sure the displayName has a value of max 100 char
+        if (-not([string]::IsNullOrEmpty($entraIDGroup.displayName))) {
+            $displayName = "$($entraIDGroup.displayName)"
+            $displayName = $($displayName).substring(0, [System.Math]::Min(100, $($displayName).Length))
+        }
+        else {
+            $displayName = "$($entraIDGroup.id)"
+        }
+        # Make sure the description has a value of max 100 char
+        if (-not([string]::IsNullOrEmpty($entraIDGroup.description))) {
+            $description = $($entraIDGroup.description).substring(0, [System.Math]::Min(100, $($entraIDGroup.description).Length))
+        }
+        else {
+            $description = $null
+        }
+
+        $accountReferences = ($educationalGroupOwners[$i] | Where-Object { $_.id -ne $actionContext.Configuration.ownerGuid }).id
+        if ($accountReferences.count -gt 0) {
+            Write-Output @(
+                @{
+                    AccountReferences   = @( $accountReferences )
+                    PermissionReference = @{ Id = $entraIDGroup.id }
+                    Description         = $description
+                    DisplayName         = $displayName
+                }
+            )
+        }
+        $m365GroupCount++
+    }
     Write-Information "Successfully queried [$m365GroupCount] existing Educational groups"
     
 }
