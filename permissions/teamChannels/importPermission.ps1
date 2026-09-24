@@ -152,24 +152,22 @@ function Get-MSEntraCertificate {
 
 function Invoke-MSEntraBatchRequest {
     <#
-        Executes GET requests for a list of items against the Microsoft Graph $batch endpoint
+        Executes a list of requests against the Microsoft Graph $batch endpoint
         (https://learn.microsoft.com/en-us/graph/json-batching), instead of one request per item.
-        Returns a hashtable keyed by the (0-based) index of $Items, where each value is the
-        (paginated, fully resolved) 'value' array of that item's response.
+        Each request is a hashtable with a 'Method' and a relative 'Uri' (e.g. '/groups/{id}/members').
+        Returns a hashtable keyed by the (0-based) index of $Requests, where each value is the
+        (paginated, fully resolved) 'value' array of that request's response.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [array]
-        $Items,
+        $Requests,
 
         [Parameter(Mandatory)]
         [hashtable]
         $Headers,
-
-        [Parameter(Mandatory)]
-        [scriptblock]
-        $UriScriptBlock,
 
         [int]
         $BatchSize = 20
@@ -177,16 +175,16 @@ function Invoke-MSEntraBatchRequest {
     process {
         $resultsByIndex = @{}
 
-        for ($i = 0; $i -lt $Items.Count; $i += $BatchSize) {
-            $batchItems = $Items[$i..[Math]::Min($i + $BatchSize - 1, $Items.Count - 1)]
+        for ($i = 0; $i -lt $Requests.Count; $i += $BatchSize) {
+            $batchItems = @($Requests[$i..[Math]::Min($i + $BatchSize - 1, $Requests.Count - 1)])
 
             $batchRequests = [System.Collections.Generic.List[object]]::new()
             for ($j = 0; $j -lt $batchItems.Count; $j++) {
                 [void]$batchRequests.Add(
                     @{
                         id     = "$j"
-                        method = 'GET'
-                        url    = (& $UriScriptBlock $batchItems[$j])
+                        method = $batchItems[$j].Method
+                        url    = $batchItems[$j].Uri
                     }
                 )
             }
@@ -212,7 +210,7 @@ function Invoke-MSEntraBatchRequest {
                 catch {
                     if ($_.Exception.Response.StatusCode -eq 429 -or $_.Exception.Response.StatusCode -eq 504) {
                         $retryCount++
-                        Write-Warning "Retry [$retryCount] for batch request covering items [$i..$($i + $batchItems.Count - 1)]"
+                        Write-Warning "Retry [$retryCount] for batch request covering requests [$i..$($i + $batchItems.Count - 1)]"
                         Start-Sleep -Seconds ($retryCount * 5)
                         continue
                     }
@@ -223,7 +221,7 @@ function Invoke-MSEntraBatchRequest {
             } while ($retryCount -gt 0 -and $retryCount -le $maxRetries)
 
             if ($retryCount -gt $maxRetries) {
-                throw "Rate limit exceeded for batch request covering items [$i..$($i + $batchItems.Count - 1)]."
+                throw "Rate limit exceeded for batch request covering requests [$i..$($i + $batchItems.Count - 1)]."
             }
 
             foreach ($response in $batchResponse.responses) {
@@ -250,7 +248,7 @@ function Invoke-MSEntraBatchRequest {
                     $resultsByIndex[$itemIndex] = $values
                 }
                 else {
-                    Write-Warning "Batch sub-request failed for item at index [$itemIndex]: $($response.body.error.message)"
+                    Write-Warning "Batch sub-request failed for request at index [$itemIndex]: $($response.body.error.message)"
                     $resultsByIndex[$itemIndex] = @()
                 }
             }
@@ -307,10 +305,13 @@ try {
     # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/channel-list?view=graph-rest-1.0&tabs=http
     # Using the Batch API to retrieve channels for all teams in batches of 20 (https://learn.microsoft.com/en-us/graph/json-batching)
     $actionMessage = "querying Microsoft Teams Channels"
-    $microsoftTeamsChannelsByTeam = Invoke-MSEntraBatchRequest -Items $microsoftTeams -Headers $headers -UriScriptBlock {
-        param($team)
-        "/teams/$($team.id)/Channels?`$select=id,displayName,membershipType,isArchived&`$filter=membershipType eq 'private' OR membershipType eq 'shared'"
-    }
+    $microsoftTeamsChannelsByTeamRequests = @(foreach ($team in $microsoftTeams) {
+        @{
+            Method = 'GET'
+            Uri    = "/teams/$($team.id)/Channels?`$select=id,displayName,membershipType,isArchived&`$filter=membershipType eq 'private' OR membershipType eq 'shared'"
+        }
+    })
+    $microsoftTeamsChannelsByTeam = Invoke-MSEntraBatchRequest -Requests $microsoftTeamsChannelsByTeamRequests -Headers $headers
 
     $microsoftTeamsChannels = [System.Collections.ArrayList]@()
     for ($i = 0; $i -lt $microsoftTeams.Count; $i++) {
@@ -328,10 +329,13 @@ try {
     # Microsoft docs: https://learn.microsoft.com/en-us/graph/api/channel-list-members?view=graph-rest-1.0&tabs=http
     # Using the Batch API to retrieve members for all channels in batches of 20 (https://learn.microsoft.com/en-us/graph/json-batching)
     $actionMessage = "querying Microsoft Teams Channel Members"
-    $microsoftTeamsChannelMembers = Invoke-MSEntraBatchRequest -Items $microsoftTeamsChannels -Headers $headers -UriScriptBlock {
-        param($channel)
-        "/teams/$($channel.Team.id)/channels/$($channel.id)/members"
-    }
+    $microsoftTeamsChannelMembersRequests = @(foreach ($channel in $microsoftTeamsChannels) {
+        @{
+            Method = 'GET'
+            Uri    = "/teams/$($channel.Team.id)/channels/$($channel.id)/members"
+        }
+    })
+    $microsoftTeamsChannelMembers = Invoke-MSEntraBatchRequest -Requests $microsoftTeamsChannelMembersRequests -Headers $headers
 
     for ($channelIndex = 0; $channelIndex -lt $microsoftTeamsChannels.Count; $channelIndex++) {
         $microsoftTeamsChannel = $microsoftTeamsChannels[$channelIndex]

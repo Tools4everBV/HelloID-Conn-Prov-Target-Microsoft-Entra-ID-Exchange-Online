@@ -151,24 +151,22 @@ function Get-MSEntraCertificate {
 
 function Invoke-MSEntraBatchRequest {
     <#
-        Executes GET requests for a list of items against the Microsoft Graph $batch endpoint
+        Executes a list of requests against the Microsoft Graph $batch endpoint
         (https://learn.microsoft.com/en-us/graph/json-batching), instead of one request per item.
-        Returns a hashtable keyed by the (0-based) index of $Items, where each value is the
-        (paginated, fully resolved) 'value' array of that item's response.
+        Each request is a hashtable with a 'Method' and a relative 'Uri' (e.g. '/groups/{id}/members').
+        Returns a hashtable keyed by the (0-based) index of $Requests, where each value is the
+        (paginated, fully resolved) 'value' array of that request's response.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [array]
-        $Items,
+        $Requests,
 
         [Parameter(Mandatory)]
         [hashtable]
         $Headers,
-
-        [Parameter(Mandatory)]
-        [scriptblock]
-        $UriScriptBlock,
 
         [int]
         $BatchSize = 20
@@ -176,16 +174,16 @@ function Invoke-MSEntraBatchRequest {
     process {
         $resultsByIndex = @{}
 
-        for ($i = 0; $i -lt $Items.Count; $i += $BatchSize) {
-            $batchItems = $Items[$i..[Math]::Min($i + $BatchSize - 1, $Items.Count - 1)]
+        for ($i = 0; $i -lt $Requests.Count; $i += $BatchSize) {
+            $batchItems = @($Requests[$i..[Math]::Min($i + $BatchSize - 1, $Requests.Count - 1)])
 
             $batchRequests = [System.Collections.Generic.List[object]]::new()
             for ($j = 0; $j -lt $batchItems.Count; $j++) {
                 [void]$batchRequests.Add(
                     @{
                         id     = "$j"
-                        method = 'GET'
-                        url    = (& $UriScriptBlock $batchItems[$j])
+                        method = $batchItems[$j].Method
+                        url    = $batchItems[$j].Uri
                     }
                 )
             }
@@ -211,7 +209,7 @@ function Invoke-MSEntraBatchRequest {
                 catch {
                     if ($_.Exception.Response.StatusCode -eq 429 -or $_.Exception.Response.StatusCode -eq 504) {
                         $retryCount++
-                        Write-Warning "Retry [$retryCount] for batch request covering items [$i..$($i + $batchItems.Count - 1)]"
+                        Write-Warning "Retry [$retryCount] for batch request covering requests [$i..$($i + $batchItems.Count - 1)]"
                         Start-Sleep -Seconds ($retryCount * 5)
                         continue
                     }
@@ -222,7 +220,7 @@ function Invoke-MSEntraBatchRequest {
             } while ($retryCount -gt 0 -and $retryCount -le $maxRetries)
 
             if ($retryCount -gt $maxRetries) {
-                throw "Rate limit exceeded for batch request covering items [$i..$($i + $batchItems.Count - 1)]."
+                throw "Rate limit exceeded for batch request covering requests [$i..$($i + $batchItems.Count - 1)]."
             }
 
             foreach ($response in $batchResponse.responses) {
@@ -249,7 +247,7 @@ function Invoke-MSEntraBatchRequest {
                     $resultsByIndex[$itemIndex] = $values
                 }
                 else {
-                    Write-Warning "Batch sub-request failed for item at index [$itemIndex]: $($response.body.error.message)"
+                    Write-Warning "Batch sub-request failed for request at index [$itemIndex]: $($response.body.error.message)"
                     $resultsByIndex[$itemIndex] = @()
                 }
             }
@@ -319,10 +317,13 @@ try {
 
     # Using the Batch API to retrieve group owners for all groups in batches of 20 (https://learn.microsoft.com/en-us/graph/json-batching)
     $actionMessage = "querying Educational group owners"
-    $educationalGroupOwners = Invoke-MSEntraBatchRequest -Items $educationalGroups -Headers $headers -UriScriptBlock {
-        param($group)
-        "/groups/$($group.id)/owners/microsoft.graph.user?`$select=id&`$top=999"
-    }
+    $educationalGroupOwnersRequests = @(foreach ($group in $educationalGroups) {
+        @{
+            Method = 'GET'
+            Uri    = "/groups/$($group.id)/owners/microsoft.graph.user?`$select=id&`$top=999"
+        }
+    })
+    $educationalGroupOwners = Invoke-MSEntraBatchRequest -Requests $educationalGroupOwnersRequests -Headers $headers
 
     $m365GroupCount = 0
     for ($i = 0; $i -lt $educationalGroups.Count; $i++) {
