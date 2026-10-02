@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.7.0] - 2026-09-30
+
+### Changed
+- **Import and sub-permission scripts** now use Microsoft Graph JSON batching (`$batch`, max 20 requests per batch) for all per-item GET requests (group members/owners, team channels, channel members) instead of one request per item. This makes imports of large tenants significantly faster. Failed sub-requests (429/5xx) are retried individually with respect to `Retry-After`.
+  - `permissions/groups/importPermission.ps1` and `subPermissionsImport.ps1`
+  - `permissions/groups/filterExamples/importOnlyGuestGroups.ps1` and `importOnlyMemberGroups.ps1`
+  - `permissions/teamChannels/importPermission.ps1` and `permissions.ps1`
+  - `permissions/educationalGroups/members/import.ps1` and `importSubPermissions.ps1`
+  - `permissions/educationalGroups/owners/import.ps1` and `importSubPermissions.ps1`
+- **Invoke-MSEntraBatchRequest** takes a list of requests (`Method` and `Uri`), so no ScriptBlocks are used (these are blocked by HelloID).
+
 ## [2.6.2] - 2026-09-09
 
 ### Hotfix

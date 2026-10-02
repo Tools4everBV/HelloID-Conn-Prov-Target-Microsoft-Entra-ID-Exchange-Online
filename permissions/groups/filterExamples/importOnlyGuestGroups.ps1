@@ -148,6 +148,114 @@ function Get-MSEntraCertificate {
         $PSCmdlet.ThrowTerminatingError($_)
     }
 }
+
+function Invoke-MSEntraBatchRequest {
+    <#
+        Executes a list of requests against the Microsoft Graph $batch endpoint
+        (https://learn.microsoft.com/en-us/graph/json-batching), instead of one request per item.
+        Each request is a hashtable with a 'Method' and a relative 'Uri' (e.g. '/groups/{id}/members').
+        Returns a hashtable keyed by the (0-based) index of $Requests, where each value is the
+        (paginated, fully resolved) 'value' array of that request's response.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [array]
+        $Requests,
+
+        [Parameter(Mandatory)]
+        [hashtable]
+        $Headers,
+
+        [int]
+        $BatchSize = 20
+    )
+    process {
+        $resultsByIndex = @{}
+
+        for ($i = 0; $i -lt $Requests.Count; $i += $BatchSize) {
+            $batchItems = @($Requests[$i..[Math]::Min($i + $BatchSize - 1, $Requests.Count - 1)])
+
+            $batchRequests = [System.Collections.Generic.List[object]]::new()
+            for ($j = 0; $j -lt $batchItems.Count; $j++) {
+                [void]$batchRequests.Add(
+                    @{
+                        id     = "$j"
+                        method = $batchItems[$j].Method
+                        url    = $batchItems[$j].Uri
+                    }
+                )
+            }
+
+            $batchSplatParams = @{
+                Uri         = 'https://graph.microsoft.com/v1.0/$batch'
+                Headers     = $Headers
+                Method      = 'POST'
+                Body        = (@{ requests = $batchRequests } | ConvertTo-Json -Depth 10)
+                ContentType = 'application/json; charset=utf-8'
+                Verbose     = $false
+                ErrorAction = 'Stop'
+            }
+
+            $batchResponse = $null
+            $retryCount = 0
+            $maxRetries = 3
+            do {
+                try {
+                    $batchResponse = Invoke-RestMethod @batchSplatParams
+                    $retryCount = 0
+                }
+                catch {
+                    if ($_.Exception.Response.StatusCode -eq 429 -or $_.Exception.Response.StatusCode -eq 504) {
+                        $retryCount++
+                        Write-Warning "Retry [$retryCount] for batch request covering requests [$i..$($i + $batchItems.Count - 1)]"
+                        Start-Sleep -Seconds ($retryCount * 5)
+                        continue
+                    }
+                    else {
+                        throw
+                    }
+                }
+            } while ($retryCount -gt 0 -and $retryCount -le $maxRetries)
+
+            if ($retryCount -gt $maxRetries) {
+                throw "Rate limit exceeded for batch request covering requests [$i..$($i + $batchItems.Count - 1)]."
+            }
+
+            foreach ($response in $batchResponse.responses) {
+                $itemIndex = $i + [int]$response.id
+                if ($response.status -ge 200 -and $response.status -lt 300) {
+                    $values = [System.Collections.ArrayList]@()
+                    if ($null -ne $response.body.value) {
+                        [void]$values.AddRange(@($response.body.value))
+                    }
+                    $nextLink = $response.body.'@odata.nextLink'
+                    while (-not [string]::IsNullOrEmpty($nextLink)) {
+                        $paginationSplatParams = @{
+                            Uri         = $nextLink
+                            Headers     = $Headers
+                            Method      = 'GET'
+                            ContentType = 'application/json; charset=utf-8'
+                            Verbose     = $false
+                            ErrorAction = 'Stop'
+                        }
+                        $paginationResponse = Invoke-RestMethod @paginationSplatParams
+                        [void]$values.AddRange(@($paginationResponse.value))
+                        $nextLink = $paginationResponse.'@odata.nextLink'
+                    }
+                    $resultsByIndex[$itemIndex] = $values
+                }
+                else {
+                    Write-Warning "Batch sub-request failed for request at index [$itemIndex]: $($response.body.error.message)"
+                    $resultsByIndex[$itemIndex] = @()
+                }
+            }
+        }
+
+        Write-Output $resultsByIndex
+    }
+}
 #endregion functions
 
 try {
@@ -167,7 +275,7 @@ try {
     $actionMessage = "querying accounts"
     # Query only Guests, as we only want to import guest group memberships to HelloID, and not regular user accounts
     $uri = "https://graph.microsoft.com/v1.0/users?`$filter=userType eq 'Guest'&`$select=id&`$top=999"
-    $accountCount = 0
+    $existingAccounts = [System.Collections.ArrayList]@()
     do {
         $getAccountsSplatParams = @{
             Uri         = $uri
@@ -177,35 +285,34 @@ try {
             Verbose     = $false
             ErrorAction = "Stop"
         }
-        $existingAccounts = Invoke-RestMethod @getAccountsSplatParams
-        foreach ($account in $existingAccounts.value) {
-            $actionMessage = "querying account group members"
-            # Make sure the displayName has a value of max 100 char
-            $groupsUri = "https://graph.microsoft.com/v1.0/users/$($account.id)/memberOf/microsoft.graph.group?`$count=true&`$select=id,displayName,groupTypes,mailEnabled,securityEnabled,onPremisesSyncEnabled&`$filter=not(groupTypes/any(c:c eq 'DynamicMembership')) and ((mailEnabled eq false and securityEnabled eq true and onPremisesSyncEnabled eq null) or groupTypes/any(c:c eq 'Unified'))"
-            do {
-                $getAccountMembershipsSplatParams = @{
-                    Uri         = $groupsUri
-                    Headers     = $headers
-                    Method      = 'GET'
-                    ContentType = 'application/json; charset=utf-8'
-                    Verbose     = $false
-                    ErrorAction = "Stop"
-                }
-                $groupMembersResponse = Invoke-RestMethod @getAccountMembershipsSplatParams
-                foreach ($entraIDGroup in $groupMembersResponse.value) {                                    
-                    Write-Output @(
-                        @{
-                            AccountReferences   = @( $account.id )
-                            PermissionReference = @{ Id = $entraIDGroup.id }                        
-                        }
-                    )
-                }
-                $groupsUri = $groupMembersResponse.'@odata.nextLink'
-            } while ($groupsUri)
-            $accountCount++
-        }
-        $uri = $existingAccounts.'@odata.nextLink'
+        $getAccountsResponse = Invoke-RestMethod @getAccountsSplatParams
+        [void]$existingAccounts.AddRange($getAccountsResponse.value)
+        $uri = $getAccountsResponse.'@odata.nextLink'
     } while ($uri)
+
+    # Using the Batch API to retrieve group memberships for all accounts in batches of 20 (https://learn.microsoft.com/en-us/graph/json-batching)
+    $actionMessage = "querying account group memberships"
+    $accountMembershipsRequests = @(foreach ($account in $existingAccounts) {
+        @{
+            Method = 'GET'
+            Uri    = "/users/$($account.id)/memberOf/microsoft.graph.group?`$count=true&`$select=id,displayName,groupTypes,mailEnabled,securityEnabled,onPremisesSyncEnabled&`$filter=not(groupTypes/any(c:c eq 'DynamicMembership')) and ((mailEnabled eq false and securityEnabled eq true and onPremisesSyncEnabled eq null) or groupTypes/any(c:c eq 'Unified'))"
+        }
+    })
+    $accountMemberships = Invoke-MSEntraBatchRequest -Requests $accountMembershipsRequests -Headers $headers
+
+    $accountCount = 0
+    for ($i = 0; $i -lt $existingAccounts.Count; $i++) {
+        $account = $existingAccounts[$i]
+        foreach ($entraIDGroup in $accountMemberships[$i]) {
+            Write-Output @(
+                @{
+                    AccountReferences   = @( $account.id )
+                    PermissionReference = @{ Id = $entraIDGroup.id }
+                }
+            )
+        }
+        $accountCount++
+    }
     Write-Information "Successfully queried memberships for [$accountCount] existing accounts"
 }
 catch {
