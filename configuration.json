@@ -93,5 +93,15 @@
             "description": "",
             "required": false
         }
+    },
+    {
+    "defaultValue": false,
+    "key": "revokeSignInSessionsOnDisable",
+    "templateOptions": {
+        "description": "",
+        "label": "Revoke active sign in sessions on account disable",
+        "required": false
+    },
+    "type": "checkbox"
     }
 ]
