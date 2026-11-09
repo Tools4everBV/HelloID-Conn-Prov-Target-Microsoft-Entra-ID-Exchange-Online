@@ -245,6 +245,9 @@ try {
     $actionList = [System.Collections.Generic.list[object]]::new()
     if ($null -ne $correlatedAccountEntra) {
         $actionList.Add('DisableAccountEntra')
+        if($actionContext.Configuration.revokeSignInSessionsOnDisable){
+            $actionList.Add('RevokeSignInSessions')
+        }
         if ($null -ne $correlatedAccountExo -and $actionContext.Configuration.ExchangeOnlineIntegration) {
             $actionList.Add('DisableAccountEXO')
         }
@@ -296,6 +299,29 @@ try {
                         Message = $auditMessage
                         IsError = $false
                     })
+                break
+            }
+
+            'RevokeSignInSessions' {
+
+                $actionMessage = "revoking sign in sessions of MS-Entra account with AccountReference [$($actionContext.References.Account)]"              
+
+                $revokeUserSignInSplatParams = @{
+                    Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/revokeSignInSessions"
+                    Headers     = @{'Authorization' = "Bearer $($entraToken)" }
+                    ContentType = 'application/json;charset=utf-8'
+                    Method      = "POST"
+                    Verbose     = $false
+                    ErrorAction = "Stop"
+                }
+                if (-not($actionContext.DryRun -eq $true)) {
+                    $null = Invoke-RestMethod @revokeUserSignInSplatParams
+                }
+                
+                $outputContext.AuditLogs.Add([PSCustomObject]@{
+                    Message = "Revoking sign in sessions MS-Entra account [$($actionContext.References.Account)] was successful"
+                    IsError = $false
+                })
                 break
             }
 

@@ -152,45 +152,45 @@ function Get-MSEntraCertificate {
 #endregion functions
 
 try {
+    # Verify if [aRef] has a value
+    if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
+        throw 'The account reference could not be found'
+    }
+
+    # Setup Connection with Entra ID
+    $actionMessage = 'connecting to MS-Entra'
+    $certificate = Get-MSEntraCertificate
+    $entraToken = Get-MSEntraAccessToken -Certificate $certificate
+
+    Write-Information 'Verifying if a MS-Entra account exists'
+
+    # Get Entra account with onPremisesSyncEnabled property
+    $actionMessage = 'querying MS-Entra account'
+    try {
+        $correlatedAccountEntra = $null
+        $splatGetEntraUser = @{
+            Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)?`$select=id,userPrincipalName,accountEnabled,onPremisesSyncEnabled"
+            Method  = 'GET'
+            Headers = @{'Authorization' = "Bearer $($entraToken)" }
+        }
+        $correlatedAccountEntra = Invoke-RestMethod @splatGetEntraUser -Verbose:$false
+        $outputContext.PreviousData = $correlatedAccountEntra | Select-Object -Property *
+    }
+    catch {
+        if ($_.Exception.Response.StatusCode -eq 404) {
+            $correlatedAccountEntra = $null
+        }
+        else {
+            throw $_
+        }
+    }
+
+    if ($null -eq $correlatedAccountEntra) {
+        throw 'MS-Entra account not found'
+    }
+
     # Only process disable action when triggered from Reconciliation
     if ($actionContext.Origin -eq 'Reconciliation') {
-        # Verify if [aRef] has a value
-        if ([string]::IsNullOrEmpty($($actionContext.References.Account))) {
-            throw 'The account reference could not be found'
-        }
-
-        # Setup Connection with Entra ID
-        $actionMessage = 'connecting to MS-Entra'
-        $certificate = Get-MSEntraCertificate
-        $entraToken = Get-MSEntraAccessToken -Certificate $certificate
-
-        Write-Information 'Verifying if a MS-Entra account exists'
-
-        # Get Entra account with onPremisesSyncEnabled property
-        $actionMessage = 'querying MS-Entra account'
-        try {
-            $correlatedAccountEntra = $null
-            $splatGetEntraUser = @{
-                Uri     = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)?`$select=id,userPrincipalName,accountEnabled,onPremisesSyncEnabled"
-                Method  = 'GET'
-                Headers = @{'Authorization' = "Bearer $($entraToken)" }
-            }
-            $correlatedAccountEntra = Invoke-RestMethod @splatGetEntraUser -Verbose:$false
-            $outputContext.PreviousData = $correlatedAccountEntra | Select-Object -Property *
-        }
-        catch {
-            if ($_.Exception.Response.StatusCode -eq 404) {
-                $correlatedAccountEntra = $null
-            }
-            else {
-                throw $_
-            }
-        }
-
-        if ($null -eq $correlatedAccountEntra) {
-            throw 'MS-Entra account not found'
-        }
-
         # Check if account is synchronized from on-premises
         $actionMessage = "disabling MS-Entra account with AccountReference [$($actionContext.References.Account)]"
         if ($correlatedAccountEntra.onPremisesSyncEnabled -eq $true) {
@@ -216,16 +216,38 @@ try {
             $null = Invoke-RestMethod @splatUpdateEntraAccount -Verbose:$false
         }
 
-        $outputContext.Success = $true
         $outputContext.AuditLogs.Add([PSCustomObject]@{
                 Message = 'Disable MS-Entra account was successful (reconciliation)'
                 IsError = $false
             })
     }
-    else {
-        Write-Information "Skipping action. [Origin] = [$($actionContext.Origin)]"
-        $outputContext.Success = $true
+
+    if($actionContext.Configuration.revokeSignInSessionsOnDisable){
+        # Revoke signin sessions
+        # API docs: https://learn.microsoft.com/en-us/graph/api/user-revokesigninsessions?view=graph-rest-1.0&tabs=http
+        $actionMessage = "revoking signin sessions of user [$($actionContext.References.Account)] with userPrincipalName [$($correlatedAccountEntra.userPrincipalName)]"
+        $revokeUserSignInSplatParams = @{
+            Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/revokeSignInSessions"
+            Headers     = @{'Authorization' = "Bearer $($entraToken)" }
+            ContentType = 'application/json;charset=utf-8'
+            Method      = "POST"
+            Verbose     = $false
+            ErrorAction = "Stop"
+        }
+        if (-not($actionContext.DryRun -eq $true)) {
+            $null = Invoke-RestMethod @revokeUserSignInSplatParams
+        }
+        else {
+            Write-Information "Dry run: would revoke signin sessions of user [$($actionContext.References.Account)] with userPrincipalName [$($correlatedAccountEntra.userPrincipalName)]"
+        }
+
+        $outputContext.AuditLogs.Add([PSCustomObject]@{
+            Message = 'Revoking signin sessions of MS-Entra account was successful'
+            IsError = $false
+        })
     }
+
+    $outputContext.Success = $true
 }
 catch {
     $outputContext.success = $false
