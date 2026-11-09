@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to [Semantic Versioning](https://semver.org).
 
+## [2.8.0] - 2026-11-09
+
+### Added
+- **Revoke sign-in sessions on disable**: new configuration option `revokeSignInSessionsOnDisable` (checkbox, default `false`). When enabled, the disable script revokes all active sign-in sessions of the user through the Graph API endpoint `/users/{id}/revokeSignInSessions`. Requires `User.RevokeSessions.All` (least privileged) or `User.ReadWrite.All`.
+  - `disable.ps1`: adds the `RevokeSignInSessions` action after `DisableAccountEntra` when the MS-Entra account is found.
+  - `correlateOnly/disable.ps1`: revokes sign-in sessions for every origin (not only Reconciliation) and also for AD synced accounts.
+  - `configuration.json` and `correlateOnly/configuration.json`: added the `revokeSignInSessionsOnDisable` option.
+
+### Changed
+- **correlateOnly/disable.ps1**: the Entra ID account is now always queried, regardless of the origin. The action fails when the account reference is empty or the account is not found, also for non-Reconciliation origins. The disable itself is still limited to Reconciliation and to cloud-only accounts.
+
 ## [2.7.0] - 2026-09-30
 
 ### Changed
