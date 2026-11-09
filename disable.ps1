@@ -309,6 +309,7 @@ try {
                 $revokeUserSignInSplatParams = @{
                     Uri         = "https://graph.microsoft.com/v1.0/users/$($actionContext.References.Account)/revokeSignInSessions"
                     Headers     = @{'Authorization' = "Bearer $($entraToken)" }
+                    ContentType = 'application/json;charset=utf-8'
                     Method      = "POST"
                     Verbose     = $false
                     ErrorAction = "Stop"
