@@ -6,6 +6,9 @@
 # Permission configuration
 $onlySetEmailWhenEmpty = $true
 
+# Email address that is registered as authentication method. Adjust to the person field of the customer.
+$email = $personContext.Person.Contact.Personal.Email
+
 # Enable TLS1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
 
@@ -27,7 +30,10 @@ function Resolve-MS-Entra-ExoError {
 
         try {
             if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
-                $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message | ConvertFrom-Json
+                $parsedErrorDetails = $ErrorObject.ErrorDetails.Message | ConvertFrom-Json
+                if ($null -ne $parsedErrorDetails) {
+                    $httpErrorObj.ErrorDetails = $parsedErrorDetails
+                }
             }
             elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
                 if ($null -ne $ErrorObject.Exception.Response) {
@@ -45,7 +51,7 @@ function Resolve-MS-Entra-ExoError {
                 $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.code): $($errorDetailsObject.error.message)"
             }
             elseif ($errorDetailsObject.error.details.message) {
-                $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.details.code): $($errorDetailsObject.details.message)"
+                $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.details.code): $($errorDetailsObject.error.details.message)"
             }
             else {
                 $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
@@ -160,7 +166,6 @@ try {
         throw "The account reference could not be found"
     }
 
-    $email = $($personContext.Person.Contact.Personal.Email)
 
     # Setup Connection with Entra/Exo
     $actionMessage = 'connecting to MS-Entra'
@@ -224,6 +229,10 @@ try {
     }
     else {
         $action = 'NotFound'
+    }
+
+    if ($action -in @('GrantPermission', 'UpdatePermission') -and [string]::IsNullOrWhiteSpace($email)) {
+        throw "The person has no email address to register as authentication method (see `$email at the top of the script)"
     }
 
     # Process

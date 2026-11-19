@@ -25,7 +25,10 @@ function Resolve-MS-Entra-ExoError {
 
         try {
             if (-not [string]::IsNullOrEmpty($ErrorObject.ErrorDetails.Message)) {
-                $httpErrorObj.ErrorDetails = $ErrorObject.ErrorDetails.Message | ConvertFrom-Json
+                $parsedErrorDetails = $ErrorObject.ErrorDetails.Message | ConvertFrom-Json
+                if ($null -ne $parsedErrorDetails) {
+                    $httpErrorObj.ErrorDetails = $parsedErrorDetails
+                }
             }
             elseif ($ErrorObject.Exception.GetType().FullName -eq 'System.Net.WebException') {
                 if ($null -ne $ErrorObject.Exception.Response) {
@@ -43,7 +46,7 @@ function Resolve-MS-Entra-ExoError {
                 $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.code): $($errorDetailsObject.error.message)"
             }
             elseif ($errorDetailsObject.error.details.message) {
-                $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.details.code): $($errorDetailsObject.details.message)"
+                $httpErrorObj.FriendlyMessage = "$($errorDetailsObject.error.details.code): $($errorDetailsObject.error.details.message)"
             }
             else {
                 $httpErrorObj.FriendlyMessage = $httpErrorObj.ErrorDetails
@@ -192,7 +195,7 @@ try {
     # API docs: https://learn.microsoft.com/en-us/graph/api/user-list?view=graph-rest-1.0&tabs=http
     $actionMessage = "querying account where [$($correlationField)] = [$($correlationValue)]"
     $getEntraIDAccountSplatParams = @{
-        Uri         = "https://graph.microsoft.com/v1.0/users?`$filter=$correlationField eq '$correlationValue'&`$select=$($accountPropertiesToQuery -join ',')"
+        Uri         = "https://graph.microsoft.com/v1.0/users?`$filter=$correlationField eq '$([uri]::EscapeDataString((("$correlationValue") -replace "'", "''")))'&`$select=$($accountPropertiesToQuery -join ',')"
         Method      = "GET"
         Verbose     = $false
         ErrorAction = "Stop"
